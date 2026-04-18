@@ -217,26 +217,23 @@ def get_dashboard(
         })
     monthly_trend.sort(key=lambda x: x["month"])
 
-    # ── Expense breakdown — group by original Category, preserve all categories ──
-    # Use case-insensitive grouping key but display original name
-    expense_df = expense_df.copy()
-    expense_df["Category_Key"] = expense_df["Category"].str.strip().str.lower()
+    # ── Expense breakdown — manual row-by-row aggregation (most robust) ──
+    cat_totals = {}
+    for _, erow in expense_df.iterrows():
+        raw_cat = str(erow.get("Category", "Other"))
+        cat_clean = raw_cat.strip()
+        if not cat_clean or cat_clean.lower() in ("nan", "none", ""):
+            cat_clean = "Other"
+        key = cat_clean.lower()
+        if key not in cat_totals:
+            cat_totals[key] = {"category": cat_clean, "amount": 0.0}
+        cat_totals[key]["amount"] += float(erow["Amount"])
 
-    # Get display name (most common casing for each key)
-    cat_display = (
-        expense_df.groupby("Category_Key")["Category"]
-        .agg(lambda x: x.mode()[0] if len(x) > 0 else x.iloc[0])
-    )
-    cat_amounts = expense_df.groupby("Category_Key")["Amount"].sum()
-
-    expense_breakdown = []
-    for key in cat_amounts.index:
-        amt = float(cat_amounts[key])
-        if amt > 0:  # only include positive expense amounts
-            expense_breakdown.append({
-                "category": str(cat_display[key]),
-                "amount":   round(amt, 2),
-            })
+    expense_breakdown = [
+        {"category": v["category"], "amount": round(v["amount"], 2)}
+        for v in cat_totals.values()
+        if v["amount"] > 0
+    ]
     expense_breakdown.sort(key=lambda x: x["amount"], reverse=True)
 
     # ── Invoice alerts ───────────────────────────────────────────────────────
