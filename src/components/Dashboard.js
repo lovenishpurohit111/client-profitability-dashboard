@@ -58,7 +58,7 @@ export default function Dashboard({ meta, onReset }) {
 
         <div className="flex items-center gap-3">
           {/* Export buttons */}
-          {data && <ExportButtons dashboardRef={dashboardRef} clients={data.clients} />}
+          {data && <ExportButtons dashboardRef={dashboardRef} data={data} />}
 
           <button onClick={onReset}
             className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm text-slate-400 hover:text-white transition-colors"

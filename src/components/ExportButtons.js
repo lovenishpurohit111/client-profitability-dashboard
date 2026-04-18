@@ -1,34 +1,91 @@
 import React, { useState } from 'react';
 
-export default function ExportButtons({ dashboardRef, clients, filters }) {
+const fmtMoney = (n) =>
+  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }).format(n);
+
+export default function ExportButtons({ dashboardRef, data }) {
   const [exporting, setExporting] = useState(false);
 
-  // ── CSV export ────────────────────────────────────────────────────────────
+  const { clients = [], summary = {}, monthly_trend = [], expense_breakdown = [] } = data || {};
+
+  // ── CSV — multi-section full dashboard export ─────────────────────────────
   const exportCSV = () => {
-    const headers = ['Client', 'Revenue', 'Expenses', 'Profit', 'Margin %',
-                     'Health Grade', 'MoM Trend %', 'Days Since Invoice', 'Invoice Status'];
-    const rows = clients.map(c => [
-      c.client,
-      c.revenue,
-      c.expenses,
-      c.profit,
-      c.margin.toFixed(1),
-      c.health.grade,
-      c.trend_pct,
-      c.days_since_invoice === 9999 ? 'Never' : c.days_since_invoice,
-      c.invoice_status,
-    ]);
-    const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
+    const lines = [];
+    const date  = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+    // ── Section 1: Summary ────────────────────────────────────────────────
+    lines.push('PROFITABILITY REPORT');
+    lines.push(`Generated:,${date}`);
+    lines.push('');
+    lines.push('=== SUMMARY ===');
+    lines.push('Metric,Value');
+    lines.push(`Total Revenue,${fmtMoney(summary.total_revenue ?? 0)}`);
+    lines.push(`Total Expenses,${fmtMoney(summary.total_expenses ?? 0)}`);
+    lines.push(`Net Profit,${fmtMoney(summary.net_profit ?? 0)}`);
+    lines.push(`Profit Margin,${(summary.profit_margin ?? 0).toFixed(1)}%`);
+    lines.push('');
+
+    // ── Section 2: Client Table ───────────────────────────────────────────
+    lines.push('=== CLIENT PROFITABILITY ===');
+    lines.push([
+      'Rank', 'Client', 'Revenue', 'Expenses', 'Net Profit',
+      'Margin %', 'Health Grade', 'Health Label',
+      'MoM Trend %', 'Trend Direction',
+      'Days Since Last Invoice', 'Last Invoice Date', 'Invoice Status',
+    ].join(','));
+
+    clients.forEach((c, i) => {
+      lines.push([
+        i + 1,
+        `"${c.client}"`,
+        fmtMoney(c.revenue),
+        fmtMoney(c.expenses),
+        fmtMoney(c.profit),
+        `${c.margin.toFixed(1)}%`,
+        c.health?.grade ?? '',
+        c.health?.label ?? '',
+        `${c.trend_pct >= 0 ? '+' : ''}${c.trend_pct}%`,
+        c.trend_dir,
+        c.days_since_invoice === 9999 ? 'Never' : c.days_since_invoice,
+        c.last_invoice_date,
+        c.invoice_status,
+      ].join(','));
+    });
+    lines.push('');
+
+    // ── Section 3: Monthly Trend ──────────────────────────────────────────
+    lines.push('=== MONTHLY TREND ===');
+    lines.push('Month,Revenue,Expenses,Net Profit');
+    monthly_trend.forEach(m => {
+      lines.push([
+        m.month,
+        fmtMoney(m.revenue),
+        fmtMoney(m.expenses),
+        fmtMoney(m.profit),
+      ].join(','));
+    });
+    lines.push('');
+
+    // ── Section 4: Expense Breakdown ─────────────────────────────────────
+    lines.push('=== EXPENSE BREAKDOWN BY CATEGORY ===');
+    lines.push('Category,Amount,% of Total Expenses');
+    const totalExp = expense_breakdown.reduce((s, e) => s + e.amount, 0);
+    expense_breakdown.forEach(e => {
+      const pct = totalExp > 0 ? ((e.amount / totalExp) * 100).toFixed(1) : '0.0';
+      lines.push([`"${e.category}"`, fmtMoney(e.amount), `${pct}%`].join(','));
+    });
+
+    // Download
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
     a.href     = url;
-    a.download = `profitability-report-${new Date().toISOString().slice(0,10)}.csv`;
+    a.download = `profitability-report-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
-  // ── PDF export ────────────────────────────────────────────────────────────
+  // ── PDF — capture full dashboard ─────────────────────────────────────────
   const exportPDF = async () => {
     setExporting(true);
     try {
@@ -56,8 +113,7 @@ export default function ExportButtons({ dashboardRef, clients, filters }) {
         pdf.addImage(imgData, 'PNG', 0, -yPos, pdfW, pdfH);
         yPos += pageH;
       }
-
-      pdf.save(`profitability-report-${new Date().toISOString().slice(0,10)}.pdf`);
+      pdf.save(`profitability-report-${new Date().toISOString().slice(0, 10)}.pdf`);
     } catch (e) {
       console.error('PDF export failed:', e);
     } finally {
@@ -65,41 +121,50 @@ export default function ExportButtons({ dashboardRef, clients, filters }) {
     }
   };
 
+  const btnBase = {
+    display: 'flex', alignItems: 'center', gap: 6,
+    padding: '6px 12px', borderRadius: 8,
+    fontSize: 12, fontWeight: 500, cursor: 'pointer',
+    transition: 'all 0.2s',
+  };
+
   return (
-    <div className="flex items-center gap-2">
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
       {/* CSV */}
       <button
         onClick={exportCSV}
         disabled={!clients?.length}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
         style={{
-          background: 'rgba(52, 211, 153, 0.12)',
-          border: '1px solid rgba(52, 211, 153, 0.3)',
+          ...btnBase,
+          background: 'rgba(52,211,153,0.12)',
+          border: '1px solid rgba(52,211,153,0.3)',
           color: '#34d399',
-          cursor: clients?.length ? 'pointer' : 'not-allowed',
           opacity: clients?.length ? 1 : 0.4,
+          cursor: clients?.length ? 'pointer' : 'not-allowed',
         }}
+        title="Download full report as CSV (includes summary, client table, monthly trend, expense breakdown)"
       >
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
           <polyline points="7 10 12 15 17 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
           <line x1="12" y1="15" x2="12" y2="3" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
         </svg>
-        CSV
+        Export CSV
       </button>
 
       {/* PDF */}
       <button
         onClick={exportPDF}
         disabled={exporting || !clients?.length}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
         style={{
-          background: 'rgba(34, 211, 238, 0.12)',
-          border: '1px solid rgba(34, 211, 238, 0.3)',
+          ...btnBase,
+          background: 'rgba(34,211,238,0.12)',
+          border: '1px solid rgba(34,211,238,0.3)',
           color: '#22d3ee',
-          cursor: (!exporting && clients?.length) ? 'pointer' : 'not-allowed',
           opacity: (!exporting && clients?.length) ? 1 : 0.4,
+          cursor: (!exporting && clients?.length) ? 'pointer' : 'not-allowed',
         }}
+        title="Download full dashboard as PDF"
       >
         {exporting ? (
           <>
@@ -109,7 +174,7 @@ export default function ExportButtons({ dashboardRef, clients, filters }) {
               borderTop: '2px solid #22d3ee',
               animation: 'spin 0.8s linear infinite',
             }} />
-            Generating...
+            Generating PDF...
           </>
         ) : (
           <>
@@ -117,7 +182,7 @@ export default function ExportButtons({ dashboardRef, clients, filters }) {
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
               <polyline points="14 2 14 8 20 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
-            PDF
+            Export PDF
           </>
         )}
       </button>

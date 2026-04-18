@@ -2,7 +2,7 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 import pandas as pd
 import numpy as np
 import io
-from datetime import datetime, date
+from datetime import datetime
 from typing import Optional
 
 app = FastAPI()
@@ -10,15 +10,17 @@ _processed_data: Optional[pd.DataFrame] = None
 
 
 def process_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    # Normalize column NAMES only (not values)
     df.columns = [c.strip().title().replace(" ", "_") for c in df.columns]
+
     col_map = {}
     for col in df.columns:
         low = col.lower()
-        if "date" in low:                          col_map["Date"] = col
-        elif "client" in low or "name" in low:     col_map["Client_Name"] = col
-        elif "desc" in low:                        col_map["Description"] = col
-        elif "amount" in low or "value" in low:    col_map["Amount"] = col
-        elif "cat" in low or "type" in low:        col_map["Category"] = col
+        if "date" in low:                        col_map["Date"] = col
+        elif "client" in low or "name" in low:   col_map["Client_Name"] = col
+        elif "desc" in low:                      col_map["Description"] = col
+        elif "amount" in low or "value" in low:  col_map["Amount"] = col
+        elif "cat" in low or "type" in low:      col_map["Category"] = col
 
     missing = [r for r in ["Date", "Client_Name", "Amount", "Category"] if r not in col_map]
     if missing:
@@ -32,32 +34,32 @@ def process_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         df["Amount"] = df["Amount"].astype(str).str.replace(r"[,$₹€£]", "", regex=True).str.strip()
     df["Amount"] = pd.to_numeric(df["Amount"], errors="coerce").fillna(0)
 
-    df["Category"] = df["Category"].astype(str).str.strip().str.title()
+    # Keep original category casing for display — only strip leading/trailing whitespace
+    df["Category"] = df["Category"].astype(str).str.strip()
+
+    # Classify Revenue vs Expense using lowercase comparison of category value
     revenue_keywords = ["revenue", "income", "sales", "payment", "receipt", "invoice"]
     df["Type"] = df["Category"].apply(
         lambda c: "Revenue" if any(k in c.lower() for k in revenue_keywords) else "Expense"
     )
+
     df["Month"] = df["Date"].dt.to_period("M").astype(str)
     df["Client_Name"] = df["Client_Name"].astype(str).str.strip()
     return df
 
 
 def health_score(margin: float, trend_pct: float, days_since: int) -> dict:
-    """Score a client A-D based on margin, revenue growth, and invoice recency."""
     pts = 0
-    # Margin (0-40 pts)
     if margin >= 40:   pts += 40
     elif margin >= 25: pts += 30
     elif margin >= 10: pts += 20
     elif margin >= 0:  pts += 10
 
-    # Growth trend (0-35 pts)
     if trend_pct > 15:    pts += 35
     elif trend_pct > 5:   pts += 28
     elif trend_pct > 0:   pts += 20
     elif trend_pct > -10: pts += 10
 
-    # Invoice recency (0-25 pts)
     if days_since <= 30:   pts += 25
     elif days_since <= 60: pts += 15
     elif days_since <= 90: pts += 5
@@ -113,7 +115,7 @@ def get_dashboard(
     if _processed_data is None:
         raise HTTPException(status_code=404, detail="No data uploaded yet.")
 
-    full_df = _processed_data.copy()   # full dataset for sparklines & aging
+    full_df = _processed_data.copy()
     df = full_df.copy()
 
     if start_date: df = df[df["Date"] >= pd.to_datetime(start_date)]
@@ -138,22 +140,14 @@ def get_dashboard(
     client_revenue  = revenue_df.groupby("Client_Name")["Amount"].sum()
     client_expenses = expense_df.groupby("Client_Name")["Amount"].sum()
 
-    # ── Monthly revenue per client for sparklines & MoM trend ───────────────
     rev_monthly = (
         revenue_df.groupby(["Client_Name", "Month"])["Amount"]
-        .sum()
-        .reset_index()
-        .sort_values("Month")
+        .sum().reset_index().sort_values("Month")
     )
 
-    # Reference date = latest date in the filtered dataset
-    ref_date = pd.to_datetime(df["Date"].max())
-
-    # ── Invoice aging uses FULL dataset (unfiltered) ─────────────────────────
     last_invoice = (
         full_df[full_df["Type"] == "Revenue"]
-        .groupby("Client_Name")["Date"]
-        .max()
+        .groupby("Client_Name")["Date"].max()
     )
 
     today = pd.Timestamp(datetime.utcnow().date())
@@ -165,49 +159,46 @@ def get_dashboard(
         profit = rev - exp
         margin = (profit / rev * 100) if rev > 0 else 0
 
-        # ── Sparkline: last 6 months revenue ──────────────────────────────
         c_monthly = rev_monthly[rev_monthly["Client_Name"] == c].tail(6)
         sparkline = [round(float(v), 2) for v in c_monthly["Amount"].tolist()]
 
-        # ── MoM trend: compare last 2 months ──────────────────────────────
         trend_pct = 0.0
         trend_dir = "flat"
         if len(c_monthly) >= 2:
-            last   = float(c_monthly.iloc[-1]["Amount"])
-            prev   = float(c_monthly.iloc[-2]["Amount"])
-            if prev > 0:
-                trend_pct = round((last - prev) / prev * 100, 1)
+            last_v = float(c_monthly.iloc[-1]["Amount"])
+            prev_v = float(c_monthly.iloc[-2]["Amount"])
+            if prev_v > 0:
+                trend_pct = round((last_v - prev_v) / prev_v * 100, 1)
                 trend_dir = "up" if trend_pct > 1 else "down" if trend_pct < -1 else "flat"
 
-        # ── Invoice aging ──────────────────────────────────────────────────
         last_inv_ts = last_invoice.get(c)
         if last_inv_ts is not None:
-            days_since = int((today - pd.Timestamp(last_inv_ts)).days)
+            days_since   = int((today - pd.Timestamp(last_inv_ts)).days)
             last_inv_str = pd.Timestamp(last_inv_ts).strftime("%Y-%m-%d")
         else:
             days_since   = 9999
             last_inv_str = "Never"
 
-        if days_since <= 30:    inv_status = "active"
-        elif days_since <= 60:  inv_status = "warning"
-        elif days_since <= 90:  inv_status = "overdue"
-        else:                   inv_status = "inactive"
+        if days_since <= 30:   inv_status = "active"
+        elif days_since <= 60: inv_status = "warning"
+        elif days_since <= 90: inv_status = "overdue"
+        else:                  inv_status = "inactive"
 
         hs = health_score(margin, trend_pct, days_since)
 
         clients_out.append({
-            "client":            c,
-            "revenue":           round(rev, 2),
-            "expenses":          round(exp, 2),
-            "profit":            round(profit, 2),
-            "margin":            round(margin, 2),
-            "health":            hs,
-            "trend_pct":         trend_pct,
-            "trend_dir":         trend_dir,
-            "sparkline":         sparkline,
+            "client":             c,
+            "revenue":            round(rev, 2),
+            "expenses":           round(exp, 2),
+            "profit":             round(profit, 2),
+            "margin":             round(margin, 2),
+            "health":             hs,
+            "trend_pct":          trend_pct,
+            "trend_dir":          trend_dir,
+            "sparkline":          sparkline,
             "days_since_invoice": days_since,
-            "last_invoice_date": last_inv_str,
-            "invoice_status":    inv_status,
+            "last_invoice_date":  last_inv_str,
+            "invoice_status":     inv_status,
         })
 
     clients_out.sort(key=lambda x: x["profit"], reverse=True)
@@ -226,22 +217,36 @@ def get_dashboard(
         })
     monthly_trend.sort(key=lambda x: x["month"])
 
-    # ── Expense breakdown ────────────────────────────────────────────────────
-    expense_cats = expense_df.groupby("Category")["Amount"].sum().reset_index()
-    expense_breakdown = sorted(
-        [{"category": str(r["Category"]), "amount": round(float(r["Amount"]), 2)}
-         for _, r in expense_cats.iterrows()],
-        key=lambda x: x["amount"], reverse=True
-    )
+    # ── Expense breakdown — group by original Category, preserve all categories ──
+    # Use case-insensitive grouping key but display original name
+    expense_df = expense_df.copy()
+    expense_df["Category_Key"] = expense_df["Category"].str.strip().str.lower()
 
-    # ── Invoice alerts (warning + overdue + inactive) ────────────────────────
+    # Get display name (most common casing for each key)
+    cat_display = (
+        expense_df.groupby("Category_Key")["Category"]
+        .agg(lambda x: x.mode()[0] if len(x) > 0 else x.iloc[0])
+    )
+    cat_amounts = expense_df.groupby("Category_Key")["Amount"].sum()
+
+    expense_breakdown = []
+    for key in cat_amounts.index:
+        amt = float(cat_amounts[key])
+        if amt > 0:  # only include positive expense amounts
+            expense_breakdown.append({
+                "category": str(cat_display[key]),
+                "amount":   round(amt, 2),
+            })
+    expense_breakdown.sort(key=lambda x: x["amount"], reverse=True)
+
+    # ── Invoice alerts ───────────────────────────────────────────────────────
     invoice_alerts = [
         {
-            "client":            c["client"],
+            "client":             c["client"],
             "days_since_invoice": c["days_since_invoice"],
-            "last_invoice_date": c["last_invoice_date"],
-            "status":            c["invoice_status"],
-            "revenue":           c["revenue"],
+            "last_invoice_date":  c["last_invoice_date"],
+            "status":             c["invoice_status"],
+            "revenue":            c["revenue"],
         }
         for c in clients_out
         if c["invoice_status"] in ("warning", "overdue", "inactive")
@@ -255,8 +260,8 @@ def get_dashboard(
             "net_profit":     round(net_profit, 2),
             "profit_margin":  round(profit_margin, 2),
         },
-        "clients":          clients_out,
-        "monthly_trend":    monthly_trend,
+        "clients":           clients_out,
+        "monthly_trend":     monthly_trend,
         "expense_breakdown": expense_breakdown,
-        "invoice_alerts":   invoice_alerts,
+        "invoice_alerts":    invoice_alerts,
     }
