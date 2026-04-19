@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import UploadPage from './components/UploadPage';
+import AppNav from './components/AppNav';
 import Dashboard from './components/Dashboard';
 
 export default function App() {
@@ -35,6 +36,7 @@ export default function App() {
           pointerEvents: 'none', zIndex: 0,
         }}
       />
+      <AppNav currentApp="cpd" />
       <div className="content-layer">
         {page === 'upload' ? (
           <UploadPage onUploadSuccess={handleUploadSuccess} />
