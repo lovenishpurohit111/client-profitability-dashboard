@@ -8,24 +8,27 @@ import ExpensePieChart from './ExpensePieChart';
 import MonthlyLineChart from './MonthlyLineChart';
 import InvoiceAlerts from './InvoiceAlerts';
 import ExportButtons from './ExportButtons';
+import AIInsights from './AIInsights';
+import HeatMap from './HeatMap';
+import ConcentrationRisk from './ConcentrationRisk';
 
 export default function Dashboard({ meta, onReset }) {
-  const [data, setData]       = useState(null);
+  const [data,    setData]    = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError]     = useState(null);
+  const [error,   setError]   = useState(null);
   const dashboardRef          = useRef(null);
 
-  const [startDate,       setStartDate]       = useState(meta?.date_range?.min || '');
-  const [endDate,         setEndDate]         = useState(meta?.date_range?.max || '');
-  const [selectedClient,  setSelectedClient]  = useState('All');
+  const [startDate,      setStartDate]      = useState(meta?.date_range?.min || '');
+  const [endDate,        setEndDate]        = useState(meta?.date_range?.max || '');
+  const [selectedClient, setSelectedClient] = useState('All');
 
   const fetchDashboard = useCallback(async () => {
     setLoading(true); setError(null);
     try {
       const params = {};
-      if (startDate)                    params.start_date = startDate;
-      if (endDate)                      params.end_date   = endDate;
-      if (selectedClient !== 'All')     params.client     = selectedClient;
+      if (startDate)              params.start_date = startDate;
+      if (endDate)                params.end_date   = endDate;
+      if (selectedClient !== 'All') params.client   = selectedClient;
       const res = await axios.get(`${API}/dashboard`, { params });
       setData(res.data);
     } catch (err) {
@@ -45,9 +48,11 @@ export default function Dashboard({ meta, onReset }) {
       {/* Top Nav */}
       <div className="flex items-center justify-between mb-8 animate-fade-in">
         <div className="flex items-center gap-3">
-          <div style={{ width:40,height:40,borderRadius:10,background:'linear-gradient(135deg,#34d399,#22d3ee)',display:'flex',alignItems:'center',justifyContent:'center' }}>
+          <div style={{ width:40,height:40,borderRadius:10,background:'linear-gradient(135deg,#34d399,#22d3ee)',
+            display:'flex',alignItems:'center',justifyContent:'center' }}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"
+                stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </div>
           <div>
@@ -55,11 +60,8 @@ export default function Dashboard({ meta, onReset }) {
             <div className="text-slate-500 text-xs font-mono">{meta?.rows} rows · {meta?.clients} clients</div>
           </div>
         </div>
-
         <div className="flex items-center gap-3">
-          {/* Export buttons */}
           {data && <ExportButtons dashboardRef={dashboardRef} data={data} />}
-
           <button onClick={onReset}
             className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm text-slate-400 hover:text-white transition-colors"
             style={{ background:'rgba(30,41,59,0.6)', border:'1px solid #334155' }}>
@@ -114,8 +116,9 @@ export default function Dashboard({ meta, onReset }) {
       {loading && (
         <div className="flex items-center justify-center py-24">
           <div className="flex flex-col items-center gap-4">
-            <div style={{ width:48,height:48,border:'3px solid #1e293b',borderTop:'3px solid #34d399',borderRadius:'50%',animation:'spin 0.8s linear infinite' }} />
-            <p className="text-slate-500 text-sm">Crunching numbers...</p>
+            <div style={{ width:48,height:48,border:'3px solid #1e293b',borderTop:'3px solid #34d399',
+              borderRadius:'50%',animation:'spin 0.8s linear infinite' }} />
+            <p className="text-slate-500 text-sm">Crunching numbers…</p>
           </div>
           <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
         </div>
@@ -128,10 +131,18 @@ export default function Dashboard({ meta, onReset }) {
       {data && !loading && (
         <div ref={dashboardRef} className="space-y-6">
 
+          {/* Concentration risk banner */}
+          {data.concentration_risk && (
+            <ConcentrationRisk risk={data.concentration_risk} />
+          )}
+
           {/* KPI Cards */}
           <SummaryCards summary={data.summary} />
 
-          {/* Invoice Alerts — only shown when there are alerts */}
+          {/* AI Insights */}
+          <AIInsights data={data} />
+
+          {/* Invoice Alerts */}
           <InvoiceAlerts alerts={data.invoice_alerts || []} />
 
           {/* Charts row */}
@@ -146,16 +157,29 @@ export default function Dashboard({ meta, onReset }) {
             </div>
           </div>
 
-          {/* Monthly line chart */}
+          {/* Monthly line chart + forecast */}
           <div className="glass-card p-6 animate-slide-up stagger-4">
-            <ChartHeader title="Monthly Trend" subtitle="Revenue, expenses & profit over time" icon="📈" />
-            <MonthlyLineChart trend={data.monthly_trend} />
+            <ChartHeader
+              title="Monthly Trend"
+              subtitle="Revenue, expenses & profit over time — with 3-month forecast"
+              icon="📈"
+            />
+            <MonthlyLineChart trend={data.monthly_trend} forecast={data.forecast || []} />
           </div>
+
+          {/* Profitability heatmap */}
+          {data.heatmap?.months?.length > 0 && selectedClient === 'All' && (
+            <HeatMap heatmap={data.heatmap} />
+          )}
 
           {/* Client table */}
           <div className="glass-card animate-slide-up stagger-4">
             <div className="p-6 border-b border-slate-800 flex items-start justify-between">
-              <ChartHeader title="Client Breakdown" subtitle="Health · trends · sparklines · invoice aging" icon="👥" />
+              <ChartHeader
+                title="Client Breakdown"
+                subtitle="Click any row to view full transaction history · sortable & searchable"
+                icon="👥"
+              />
               <div className="flex items-center gap-3 text-xs font-mono text-slate-600 mt-1">
                 {[['A','#34d399','Excellent'],['B','#22d3ee','Good'],['C','#fbbf24','Fair'],['D','#fb7185','At Risk']].map(([g,c,l]) => (
                   <span key={g} className="flex items-center gap-1">
@@ -167,6 +191,7 @@ export default function Dashboard({ meta, onReset }) {
             </div>
             <ClientTable clients={data.clients} />
           </div>
+
         </div>
       )}
     </div>
