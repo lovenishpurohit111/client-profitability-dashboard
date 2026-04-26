@@ -2,6 +2,37 @@ import React, { useState, useRef } from 'react';
 import axios from 'axios';
 import API from '../config';
 
+const SAMPLE_CSV = `Date,Client Name,Description,Amount,Category
+2024-01-05,Acme Corp,Website Design Project,15000,Revenue
+2024-01-08,Acme Corp,Server Hosting,1200,Expenses
+2024-01-10,Globex Inc,Mobile App Development,32000,Revenue
+2024-01-12,Globex Inc,Cloud Infrastructure,4500,Expenses
+2024-01-15,Initech Ltd,SEO Campaign,8000,Revenue
+2024-01-18,Initech Ltd,Marketing Tools,600,Expenses
+2024-01-20,Umbrella Co,Data Analytics Dashboard,22000,Revenue
+2024-01-22,Umbrella Co,Software Licenses,1800,Expenses
+2024-01-25,Stark Industries,AI Integration,45000,Revenue
+2024-01-28,Stark Industries,GPU Compute Costs,8000,Expenses
+2024-02-02,Acme Corp,UI Redesign Phase 2,12000,Revenue
+2024-02-05,Acme Corp,Design Tools,900,Expenses
+2024-02-07,Globex Inc,API Development,18000,Revenue
+2024-02-10,Globex Inc,Third Party APIs,2200,Expenses
+2024-02-12,Initech Ltd,Content Marketing,5000,Revenue
+2024-02-14,Initech Ltd,Content Tools,400,Expenses
+2024-02-18,Umbrella Co,Backend Optimization,11000,Revenue
+2024-02-20,Umbrella Co,DevOps Tools,1100,Expenses
+2024-02-22,Stark Industries,Machine Learning Model,38000,Revenue
+2024-02-25,Stark Industries,Data Processing,5500,Expenses`;
+
+function downloadSampleCSV() {
+  const blob = new Blob([SAMPLE_CSV], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'sample_data.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 export default function UploadPage({ onUploadSuccess }) {
   const [dragging, setDragging] = useState(false);
@@ -220,6 +251,55 @@ export default function UploadPage({ onUploadSuccess }) {
         <p className="text-slate-600 text-xs mt-3">
           Category should contain "Revenue" or "Income" for revenue rows; anything else is treated as an expense.
         </p>
+
+        {/* Sample download */}
+        <div className="mt-6 flex flex-wrap gap-3 justify-center">
+          <button
+            onClick={downloadSampleCSV}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium transition-all hover:opacity-90"
+            style={{
+              background: 'rgba(52, 211, 153, 0.1)',
+              border: '1px solid rgba(52, 211, 153, 0.3)',
+              color: '#34d399',
+              cursor: 'pointer',
+            }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <polyline points="7 10 12 15 17 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <line x1="12" y1="15" x2="12" y2="3" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+            </svg>
+            Download Sample CSV
+          </button>
+          <a
+            href="data:text/plain;charset=utf-8,Date%2CClient%20Name%2CDescription%2CAmount%2CCategory%0A2024-01-05%2CAcme%20Corp%2CWebsite%20Design%2C15000%2CRevenue%0A2024-01-08%2CAcme%20Corp%2CServer%20Hosting%2C1200%2CExpenses"
+            download="sample_template.csv"
+            onClick={(e) => {
+              e.preventDefault();
+              const mini = `Date,Client Name,Description,Amount,Category\n2024-01-05,Your Client,Service Description,10000,Revenue\n2024-01-06,Your Client,Tool Cost,500,Expenses`;
+              const blob = new Blob([mini], { type: 'text/csv' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url; a.download = 'blank_template.csv'; a.click();
+              URL.revokeObjectURL(url);
+            }}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium transition-all hover:opacity-90"
+            style={{
+              background: 'rgba(34, 211, 238, 0.08)',
+              border: '1px solid rgba(34, 211, 238, 0.25)',
+              color: '#22d3ee',
+              cursor: 'pointer',
+              textDecoration: 'none',
+            }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <polyline points="14 2 14 8 20 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            Blank Template
+          </a>
+        </div>
+        <p className="text-slate-700 text-xs mt-3">Don't have a file yet? Download a sample to see the expected format.</p>
       </div>
     </div>
   );
