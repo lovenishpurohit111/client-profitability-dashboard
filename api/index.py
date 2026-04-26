@@ -364,3 +364,275 @@ Respond ONLY in this JSON (no markdown):
         return ins
     except Exception:
         return rule_based_insights(summary, clients, alerts)
+
+
+# ── Category taxonomy ─────────────────────────────────────────────────────────
+
+CATEGORY_RULES = {
+    "Cloud & Hosting": [
+        "server", "hosting", "cloud", "aws", "azure", "gcp", "compute", "gpu",
+        "cdn", "infrastructure", "devops", "ci/cd", "pipeline", "container",
+        "docker", "kubernetes", "heroku", "digitalocean", "linode", "vultr",
+        "database", "storage", "bandwidth", "domain",
+    ],
+    "Software & Tools": [
+        "software", "license", "saas", "platform", "tool", "plugin", "extension",
+        "subscription", "crm", "erp", "api", "sdk", "ide", "analytics platform",
+        "profiling", "monitoring", "logging", "dashboard software", "reporting software",
+        "scheduling", "project management", "jira", "slack", "notion", "figma",
+        "adobe", "github", "gitlab", "bitbucket", "linear",
+    ],
+    "Marketing & Advertising": [
+        "marketing", "advertising", "ads", "ad spend", "ppc", "seo", "sem",
+        "social media", "campaign", "email marketing", "email platform", "newsletter",
+        "content", "creative", "brand", "pr", "influencer", "affiliate",
+        "google ads", "facebook ads", "meta ads", "linkedin ads",
+    ],
+    "Design & Creative": [
+        "design", "creative tools", "figma", "sketch", "illustrator", "photoshop",
+        "canva", "invision", "zeplin", "animation", "video", "graphic",
+        "ui", "ux", "wireframe", "prototype",
+    ],
+    "Data & AI": [
+        "data", "dataset", "machine learning", "ai", "deep learning", "nlp",
+        "computer vision", "model", "training", "inference", "gpu compute",
+        "research compute", "annotation", "labeling", "kaggle", "hugging face",
+        "openai", "anthropic", "cohere",
+    ],
+    "Payment Processing": [
+        "payment gateway", "stripe", "paypal", "square", "braintree", "transaction fee",
+        "merchant", "checkout", "billing", "invoicing",
+    ],
+    "Security": [
+        "security", "ssl", "certificate", "firewall", "vpn", "antivirus",
+        "penetration", "audit", "compliance", "2fa", "auth", "identity",
+        "sso", "okta", "cloudflare",
+    ],
+    "Communication": [
+        "communication", "email", "chat", "video call", "zoom", "teams",
+        "meet", "webinar", "phone", "sms", "twilio", "sendgrid", "mailgun",
+    ],
+    "Professional Services": [
+        "consulting", "legal", "accounting", "audit", "tax", "payroll",
+        "hr", "recruitment", "training", "coaching", "advisory",
+    ],
+    "Office & Operations": [
+        "office", "rent", "utilities", "supplies", "equipment", "hardware",
+        "laptop", "desk", "furniture", "travel", "accommodation", "meals",
+        "insurance", "bank fee", "wire transfer",
+    ],
+    "Revenue – Web Development": [
+        "website", "web design", "web development", "frontend", "backend",
+        "cms", "wordpress", "shopify", "e-commerce", "responsive", "ui redesign",
+        "landing page", "portal",
+    ],
+    "Revenue – Mobile": [
+        "mobile", "app development", "ios", "android", "react native", "flutter",
+        "mobile app",
+    ],
+    "Revenue – Consulting / Strategy": [
+        "consulting", "strategy", "advisory", "workshop", "discovery",
+        "audit", "review", "assessment",
+    ],
+    "Revenue – Marketing Services": [
+        "seo campaign", "ppc campaign", "social media management", "content marketing",
+        "brand refresh", "email marketing", "marketing services",
+    ],
+    "Revenue – Data / AI": [
+        "ai integration", "machine learning", "deep learning", "nlp implementation",
+        "computer vision", "recommendation engine", "data analytics", "data migration",
+        "data pipeline",
+    ],
+    "Revenue – SaaS / Product": [
+        "saas", "product", "subscription", "license", "platform access",
+    ],
+}
+
+
+def rule_categorize(description: str, assigned_category: str) -> dict:
+    desc_lower = description.lower()
+    acat_lower = assigned_category.lower()
+
+    best_cat, best_score = None, 0
+    for cat, keywords in CATEGORY_RULES.items():
+        score = sum(1 for kw in keywords if kw in desc_lower)
+        if score > best_score:
+            best_score, best_cat = score, cat
+
+    # Determine Revenue vs Expense for the suggested category
+    revenue_kw = ["revenue", "income", "sales", "payment", "receipt", "invoice"]
+    assigned_type = "Revenue" if any(k in acat_lower for k in revenue_kw) else "Expense"
+
+    if best_cat is None or best_score == 0:
+        return {
+            "suggested_category": assigned_category,
+            "suggested_type": assigned_type,
+            "confidence": "low",
+            "match": True,
+            "reason": "No strong keyword match found — keeping original category.",
+        }
+
+    suggested_type = "Revenue" if best_cat.startswith("Revenue") else "Expense"
+    type_match = assigned_type == suggested_type
+    name_match = best_cat.lower() in acat_lower or acat_lower in best_cat.lower()
+    match = type_match and (name_match or best_score >= 3)
+
+    return {
+        "suggested_category": best_cat,
+        "suggested_type": suggested_type,
+        "confidence": "high" if best_score >= 3 else "medium",
+        "match": match,
+        "reason": (
+            f"Description contains keywords matching '{best_cat}' "
+            f"({'matches' if match else 'conflicts with'} assigned '{assigned_category}')."
+        ),
+    }
+
+
+@app.post("/api/categorize")
+async def categorize_transactions(payload: dict):
+    global _processed_data
+    if _processed_data is None:
+        raise HTTPException(status_code=404, detail="No data uploaded yet.")
+
+    client_filter = payload.get("client")  # optional
+    df = _processed_data.copy()
+    if client_filter and client_filter != "All":
+        df = df[df["Client_Name"] == client_filter]
+
+    if df.empty:
+        return {"results": [], "summary": {"total": 0, "match": 0, "mismatch": 0, "uncertain": 0}}
+
+    # Deduplicate: one entry per (description, category) pair
+    desc_col = "Description" if "Description" in df.columns else None
+    if desc_col is None:
+        # Fall back to Category only
+        df["Description"] = df["Category"]
+        desc_col = "Description"
+
+    df["Description"] = df["Description"].astype(str).str.strip()
+    pairs = df[["Description", "Category", "Type"]].drop_duplicates().to_dict("records")
+
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+
+    if api_key:
+        results = await _ai_categorize(pairs, api_key)
+    else:
+        results = [
+            {
+                "description": p["Description"],
+                "assigned_category": p["Category"],
+                "assigned_type": p["Type"],
+                **rule_categorize(p["Description"], p["Category"]),
+            }
+            for p in pairs
+        ]
+
+    match_count    = sum(1 for r in results if r["match"] and r["confidence"] != "low")
+    mismatch_count = sum(1 for r in results if not r["match"])
+    uncertain      = sum(1 for r in results if r["confidence"] == "low")
+
+    return {
+        "results": results,
+        "summary": {
+            "total":     len(results),
+            "match":     match_count,
+            "mismatch":  mismatch_count,
+            "uncertain": uncertain,
+            "source":    "claude+web" if api_key else "rule-based",
+        },
+    }
+
+
+async def _ai_categorize(pairs: list, api_key: str) -> list:
+    """Use Claude with web_search tool to verify each transaction category."""
+    import httpx
+
+    # Build a compact list for Claude
+    lines = "\n".join(
+        f"{i+1}. Description: \"{p['Description']}\" | Assigned category: \"{p['Category']}\" | Type: {p['Type']}"
+        for i, p in enumerate(pairs)
+    )
+
+    prompt = f"""You are a financial transaction categorization auditor for a service business.
+
+For each transaction below, use your knowledge (and web search if helpful) to determine:
+1. What is the most accurate business category for this transaction?
+2. Does it match the assigned category?
+3. Is the Revenue/Expense classification correct?
+
+Transactions:
+{lines}
+
+Respond ONLY with a JSON array (no markdown, no preamble), one object per transaction, in order:
+[
+  {{
+    "description": "exact description from input",
+    "assigned_category": "exact assigned category from input",
+    "assigned_type": "Revenue or Expense",
+    "suggested_category": "your suggested category name",
+    "suggested_type": "Revenue or Expense",
+    "confidence": "high | medium | low",
+    "match": true or false,
+    "reason": "one sentence explanation"
+  }},
+  ...
+]"""
+
+    try:
+        async with httpx.AsyncClient() as hc:
+            resp = await hc.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": api_key,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json",
+                },
+                json={
+                    "model": "claude-sonnet-4-20250514",
+                    "max_tokens": 4096,
+                    "tools": [{"type": "web_search_20250305", "name": "web_search"}],
+                    "messages": [{"role": "user", "content": prompt}],
+                },
+                timeout=60.0,
+            )
+
+        if resp.status_code != 200:
+            raise Exception(f"API error {resp.status_code}")
+
+        # Extract text from response (may contain tool_use blocks)
+        content = resp.json().get("content", [])
+        text = " ".join(b.get("text", "") for b in content if b.get("type") == "text")
+
+        # Parse JSON array from text
+        m = re.search(r"\[.*\]", text, re.DOTALL)
+        if not m:
+            raise Exception("No JSON array in response")
+        ai_results = json.loads(m.group())
+
+        # Ensure all pairs are covered (fill missing with rule-based)
+        desc_map = {r["description"]: r for r in ai_results}
+        final = []
+        for p in pairs:
+            if p["Description"] in desc_map:
+                final.append(desc_map[p["Description"]])
+            else:
+                final.append({
+                    "description": p["Description"],
+                    "assigned_category": p["Category"],
+                    "assigned_type": p["Type"],
+                    **rule_categorize(p["Description"], p["Category"]),
+                })
+        return final
+
+    except Exception as e:
+        # Full fallback
+        return [
+            {
+                "description": p["Description"],
+                "assigned_category": p["Category"],
+                "assigned_type": p["Type"],
+                **rule_categorize(p["Description"], p["Category"]),
+            }
+            for p in pairs
+        ]

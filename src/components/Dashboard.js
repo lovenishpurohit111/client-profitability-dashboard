@@ -11,6 +11,7 @@ import ExportButtons from './ExportButtons';
 import AIInsights from './AIInsights';
 import HeatMap from './HeatMap';
 import ConcentrationRisk from './ConcentrationRisk';
+import CategoryAudit from './CategoryAudit';
 
 export default function Dashboard({ meta, onReset }) {
   const [data,    setData]    = useState(null);
@@ -171,6 +172,9 @@ export default function Dashboard({ meta, onReset }) {
           {data.heatmap?.months?.length > 0 && selectedClient === 'All' && (
             <HeatMap heatmap={data.heatmap} />
           )}
+
+          {/* Category Audit */}
+          <CategoryAudit clients={meta?.clients_list || []} />
 
           {/* Client table */}
           <div className="glass-card animate-slide-up stagger-4">
