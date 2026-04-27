@@ -2,27 +2,89 @@ import React, { useState, useRef } from 'react';
 import axios from 'axios';
 import API from '../config';
 
-const SAMPLE_CSV = `Date,Client Name,Description,Amount,Category
-2024-01-05,Acme Corp,Website Design Project,15000,Revenue
-2024-01-08,Acme Corp,Server Hosting,1200,Expenses
-2024-01-10,Globex Inc,Mobile App Development,32000,Revenue
-2024-01-12,Globex Inc,Cloud Infrastructure,4500,Expenses
-2024-01-15,Initech Ltd,SEO Campaign,8000,Revenue
-2024-01-18,Initech Ltd,Marketing Tools,600,Expenses
-2024-01-20,Umbrella Co,Data Analytics Dashboard,22000,Revenue
-2024-01-22,Umbrella Co,Software Licenses,1800,Expenses
-2024-01-25,Stark Industries,AI Integration,45000,Revenue
-2024-01-28,Stark Industries,GPU Compute Costs,8000,Expenses
-2024-02-02,Acme Corp,UI Redesign Phase 2,12000,Revenue
-2024-02-05,Acme Corp,Design Tools,900,Expenses
-2024-02-07,Globex Inc,API Development,18000,Revenue
-2024-02-10,Globex Inc,Third Party APIs,2200,Expenses
-2024-02-12,Initech Ltd,Content Marketing,5000,Revenue
-2024-02-14,Initech Ltd,Content Tools,400,Expenses
-2024-02-18,Umbrella Co,Backend Optimization,11000,Revenue
-2024-02-20,Umbrella Co,DevOps Tools,1100,Expenses
-2024-02-22,Stark Industries,Machine Learning Model,38000,Revenue
-2024-02-25,Stark Industries,Data Processing,5500,Expenses`;
+const SAMPLE_CSV = `Date,Client Name,Memo,Amount,Category
+2024-01-05,Acme Corp,Initial payment for homepage redesign and branding refresh,15000,Revenue
+2024-01-08,Acme Corp,AWS EC2 monthly server hosting fee,1200,Expenses
+2024-01-10,Globex Inc,Milestone 1 payment - iOS and Android app development,32000,Revenue
+2024-01-12,Globex Inc,Google Cloud infrastructure setup and deployment,4500,Expenses
+2024-01-15,Initech Ltd,Q1 SEO audit and keyword optimisation campaign,8000,Revenue
+2024-01-18,Initech Ltd,Ahrefs and SEMrush annual subscription,600,Expenses
+2024-01-20,Umbrella Co,Client analytics dashboard - Phase 1 delivery,22000,Revenue
+2024-01-22,Umbrella Co,Tableau and Power BI software licences,1800,Expenses
+2024-01-25,Stark Industries,AI chatbot integration with CRM system,45000,Revenue
+2024-01-28,Stark Industries,GPU compute costs for model training runs,8000,Expenses
+2024-01-30,Pinnacle Group,Brand identity and logo design project,12500,Revenue
+2024-01-31,Pinnacle Group,Adobe Creative Cloud team subscription,900,Expenses
+2024-02-02,Acme Corp,UI redesign Phase 2 - component library build,12000,Revenue
+2024-02-05,Acme Corp,Figma Pro and design asset licences,900,Expenses
+2024-02-07,Globex Inc,REST API development and third-party integrations,18000,Revenue
+2024-02-10,Globex Inc,Stripe and Twilio API usage fees,2200,Expenses
+2024-02-12,Initech Ltd,February content marketing retainer,5000,Revenue
+2024-02-14,Initech Ltd,Content creation tools and Canva Pro,400,Expenses
+2024-02-18,Umbrella Co,Backend performance optimisation sprint,11000,Revenue
+2024-02-20,Umbrella Co,DataDog monitoring and DevOps tooling,1100,Expenses
+2024-02-22,Stark Industries,NLP-based document classification model,38000,Revenue
+2024-02-25,Stark Industries,AWS S3 data storage and processing,5500,Expenses
+2024-02-27,Pinnacle Group,Social media management - Feb retainer,6000,Revenue
+2024-02-28,Pinnacle Group,Hootsuite and scheduling tool subscriptions,350,Expenses
+2024-02-29,Nexon Digital,E-commerce platform build - Shopify custom theme,27000,Revenue
+2024-02-29,Nexon Digital,Shopify app subscriptions and payment gateway,1400,Expenses
+2024-03-01,Acme Corp,E-commerce checkout module development,20000,Revenue
+2024-03-04,Acme Corp,Stripe payment gateway integration fee,800,Expenses
+2024-03-06,Globex Inc,Security audit and penetration testing report,14000,Revenue
+2024-03-09,Globex Inc,Burp Suite Pro and security scanning tools,3000,Expenses
+2024-03-12,Initech Ltd,Google Ads PPC campaign management - Q1,9500,Revenue
+2024-03-15,Initech Ltd,Google Ads spend - March campaign budget,2000,Expenses
+2024-03-18,Umbrella Co,Salesforce CRM integration and custom workflows,16000,Revenue
+2024-03-21,Umbrella Co,Salesforce CRM licence fee,2400,Expenses
+2024-03-24,Stark Industries,Deep learning image recognition pipeline,52000,Revenue
+2024-03-27,Stark Industries,Research compute cluster and GPU rental,9000,Expenses
+2024-03-28,Pinnacle Group,Brand refresh campaign creative and copy,11000,Revenue
+2024-03-29,Pinnacle Group,Stock photography and creative asset licences,900,Expenses
+2024-03-30,Nexon Digital,Product catalogue migration and SEO setup,9500,Revenue
+2024-03-31,Nexon Digital,Yoast SEO Premium and content plugin suite,450,Expenses
+2024-04-02,Acme Corp,Mobile responsive updates across all pages,9000,Revenue
+2024-04-05,Acme Corp,BrowserStack cross-device testing subscription,700,Expenses
+2024-04-08,Globex Inc,CI/CD pipeline setup with GitHub Actions,21000,Revenue
+2024-04-11,Globex Inc,GitHub Teams plan and deployment tooling,1500,Expenses
+2024-04-14,Initech Ltd,LinkedIn and Meta social media management - April,6000,Revenue
+2024-04-17,Initech Ltd,Buffer scheduling and social analytics tools,350,Expenses
+2024-04-20,Umbrella Co,Custom KPI reporting dashboard delivery,13000,Revenue
+2024-04-23,Umbrella Co,Looker Studio Pro and reporting software,950,Expenses
+2024-04-26,Stark Industries,NLP sentiment analysis engine - final delivery,41000,Revenue
+2024-04-29,Stark Industries,Cloud GPU rental for inference testing,7500,Expenses
+2024-04-30,Pinnacle Group,April content retainer - blog and email,5500,Revenue
+2024-04-30,Pinnacle Group,Mailchimp and email automation platform,480,Expenses
+2024-04-30,Nexon Digital,April e-commerce maintenance and support,4000,Revenue
+2024-04-30,Nexon Digital,Hosting and CDN fees for store,600,Expenses
+2024-05-03,Acme Corp,CMS development - WordPress custom theme,17000,Revenue
+2024-05-06,Acme Corp,WP Engine managed hosting plan,1100,Expenses
+2024-05-09,Globex Inc,Application performance optimisation sprint,11500,Revenue
+2024-05-12,Globex Inc,New Relic APM and profiling subscription,600,Expenses
+2024-05-15,Initech Ltd,Email marketing campaign design and send,4500,Revenue
+2024-05-18,Initech Ltd,Klaviyo email platform monthly fee,500,Expenses
+2024-05-21,Umbrella Co,Legacy data migration to new cloud warehouse,19000,Revenue
+2024-05-24,Umbrella Co,AWS Glue ETL and migration tooling,1600,Expenses
+2024-05-27,Stark Industries,Computer vision quality control system,47000,Revenue
+2024-05-30,Stark Industries,Labelled dataset licensing from third party,6000,Expenses
+2024-05-31,Pinnacle Group,Influencer campaign strategy and execution,8500,Revenue
+2024-05-31,Pinnacle Group,Influencer management platform subscription,650,Expenses
+2024-05-31,Nexon Digital,Conversion rate optimisation audit and fixes,7500,Revenue
+2024-05-31,Nexon Digital,Hotjar heatmap and session recording tool,290,Expenses
+2024-06-03,Acme Corp,Google Analytics 4 integration and event tracking,14000,Revenue
+2024-06-06,Acme Corp,GA4 and analytics platform licence,1300,Expenses
+2024-06-09,Globex Inc,Microservices architecture redesign - Phase 1,28000,Revenue
+2024-06-12,Globex Inc,Docker Hub and container registry hosting,3500,Expenses
+2024-06-15,Initech Ltd,H1 brand refresh campaign creative direction,11000,Revenue
+2024-06-18,Initech Ltd,Creative tool subscriptions and font licences,900,Expenses
+2024-06-21,Umbrella Co,API gateway configuration and load balancing,15000,Revenue
+2024-06-24,Umbrella Co,Kong API management platform licence,1200,Expenses
+2024-06-27,Stark Industries,Recommendation engine for e-commerce client,55000,Revenue
+2024-06-30,Stark Industries,Cloud infrastructure and model serving costs,10000,Expenses
+2024-06-30,Pinnacle Group,June retainer - PR and media outreach,7000,Revenue
+2024-06-30,Pinnacle Group,PR distribution platform and media database,800,Expenses
+2024-06-30,Nexon Digital,Custom checkout flow and upsell module,13000,Revenue
+2024-06-30,Nexon Digital,Payment processing and app subscription fees,1100,Expenses`;
 
 function downloadSampleCSV() {
   const blob = new Blob([SAMPLE_CSV], { type: 'text/csv' });
