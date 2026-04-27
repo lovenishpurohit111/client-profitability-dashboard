@@ -58,7 +58,7 @@ export default function Dashboard({ meta, onReset }) {
           </div>
           <div>
             <div className="text-white font-semibold text-lg" style={{ fontFamily:'DM Serif Display' }}>ProfitLens</div>
-            <div className="text-slate-500 text-xs font-mono">{meta?.rows} rows · {meta?.clients} clients</div>
+            <div className="text-slate-500 text-xs font-mono">{meta?.rows} rows · {meta?.clients} clients{meta?.file_format === 'quickbooks-vendor' ? ' · QuickBooks format ✓' : ''}</div>
           </div>
         </div>
         <div className="flex items-center gap-3">

@@ -74,7 +74,7 @@ export default function UploadPage({ onUploadSuccess }) {
           setProgress(Math.round((e.loaded / e.total) * 100));
         },
       });
-      onUploadSuccess(res.data);
+      onUploadSuccess({ ...res.data, file_format: res.data.file_format || 'standard' });
     } catch (err) {
       const msg = err.response?.data?.detail || 'Upload failed. Please try again.';
       setError(typeof msg === 'string' ? msg : JSON.stringify(msg));
@@ -250,6 +250,8 @@ export default function UploadPage({ onUploadSuccess }) {
         </div>
         <p className="text-slate-600 text-xs mt-3">
           Category should contain "Revenue" or "Income" for revenue rows; anything else is treated as an expense.
+          <br/>
+          <span style={{ color: '#38bdf8' }}>QuickBooks</span> "Transaction List by Vendor" exports are automatically detected — the <strong>Split</strong> column is used as the category and vendors become clients.
         </p>
 
         {/* Sample download */}

@@ -9,28 +9,188 @@ app = FastAPI()
 _processed_data: Optional[pd.DataFrame] = None
 
 
+REVENUE_TX_TYPES = {"invoice", "payment", "sales receipt", "deposit", "credit memo", "refund"}
+EXPENSE_TX_TYPES = {"cash expense", "credit card expense", "bill", "check", "expense",
+                    "journal entry", "bill payment", "purchase order"}
+
+
+def _clean_amount(series: pd.Series) -> pd.Series:
+    """Strip currency symbols, remove parentheses (accounting negatives), parse to float."""
+    s = series.astype(str).str.replace(r"[,$₹€£\s]", "", regex=True)
+    # Accounting format: (123.45) → -123.45
+    s = s.str.replace(r"^\((.+)\)$", r"-\1", regex=True)
+    return pd.to_numeric(s, errors="coerce").fillna(0)
+
+
+def _detect_quickbooks_vendor(raw_bytes: bytes) -> bool:
+    """Return True if the file looks like a QuickBooks Transaction List by Vendor."""
+    try:
+        text = raw_bytes.decode("utf-8", errors="ignore")
+    except Exception:
+        return False
+    first = text[:500].lower()
+    return "transaction list by vendor" in first or (
+        "split" in first and ("transaction type" in first or "posting" in first)
+    )
+
+
+def _parse_quickbooks_vendor(raw_bytes: bytes) -> pd.DataFrame:
+    """
+    Parse a QuickBooks 'Transaction List by Vendor' CSV/export.
+
+    Format:
+      Row 0+: report title lines (skip until we hit the column header row)
+      Vendor section header: single non-empty cell with vendor name (and optional " (N)")
+      Data rows: Date, Transaction type, Num, Posting, Memo, Account full name, Amount, Split
+      Summary row: starts with "Total for ..." → skip
+    """
+    import csv
+
+    text = raw_bytes.decode("utf-8", errors="ignore")
+    reader = list(csv.reader(io.StringIO(text)))
+
+    # Find the column header row — the one that contains "date" and "amount"
+    header_idx = None
+    for i, row in enumerate(reader):
+        low = [c.strip().lower() for c in row]
+        if "date" in low and "amount" in low:
+            header_idx = i
+            break
+
+    if header_idx is None:
+        raise ValueError("Could not find column header row in QuickBooks export.")
+
+    headers = [c.strip() for c in reader[header_idx]]
+
+    # Map QuickBooks columns to our standard names
+    col_idx = {}
+    for i, h in enumerate(headers):
+        hl = h.lower()
+        if hl == "date":                          col_idx["Date"] = i
+        elif "transaction type" in hl:            col_idx["TxType"] = i
+        elif "memo" in hl or "description" in hl: col_idx["Description"] = i
+        elif "account" in hl:                     col_idx["Account"] = i
+        elif hl == "amount":                      col_idx["Amount"] = i
+        elif "split" in hl:                       col_idx["Category"] = i
+        elif "num" in hl:                         col_idx["Num"] = i
+
+    required = ["Date", "Amount", "Category"]
+    missing = [r for r in required if r not in col_idx]
+    if missing:
+        raise ValueError(f"QuickBooks export missing columns: {missing}. Found: {headers}")
+
+    rows = []
+    current_vendor = "Unknown"
+
+    for row in reader[header_idx + 1:]:
+        # Skip blank rows
+        non_empty = [c.strip() for c in row if c.strip()]
+        if not non_empty:
+            continue
+
+        # Detect "Total for ..." summary rows → skip
+        first = non_empty[0].lower()
+        if first.startswith("total for") or first.startswith("total"):
+            continue
+
+        # Detect vendor section header:
+        # It's a row where the first cell has text but has no valid date in the Date column
+        date_val = row[col_idx["Date"]].strip() if col_idx.get("Date") is not None and len(row) > col_idx["Date"] else ""
+        try:
+            pd.to_datetime(date_val, errors="raise")
+            is_data_row = True
+        except Exception:
+            is_data_row = False
+
+        if not is_data_row:
+            # Vendor header — strip trailing " (N)" like "Bob's Burger Joint (3)"
+            raw_vendor = non_empty[0].strip()
+            current_vendor = re.sub(r"\s*\(\d+\)\s*$", "", raw_vendor).strip()
+            continue
+
+        # Data row — extract fields safely
+        def get(key, default=""):
+            idx = col_idx.get(key)
+            if idx is None or idx >= len(row):
+                return default
+            return row[idx].strip()
+
+        rows.append({
+            "Date":        get("Date"),
+            "Client_Name": current_vendor,
+            "Description": get("Description") or get("Account") or get("Num") or "—",
+            "Amount":      get("Amount"),
+            "Category":    get("Category"),
+            "TxType":      get("TxType"),
+        })
+
+    if not rows:
+        raise ValueError("No transaction rows found in QuickBooks export.")
+
+    df = pd.DataFrame(rows)
+    df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+    df = df.dropna(subset=["Date"])
+    df["Amount"] = _clean_amount(df["Amount"])
+    df["Amount"] = df["Amount"].abs()   # store absolute; Type determines sign direction
+    df["Category"] = df["Category"].astype(str).str.strip()
+    df["Client_Name"] = df["Client_Name"].astype(str).str.strip()
+
+    # Determine Revenue vs Expense
+    # Priority: Transaction type field → then category keywords → then sign of original amount
+    revenue_kw = ["revenue", "income", "sales", "payment", "receipt", "invoice"]
+
+    def classify(row_s):
+        tx = row_s.get("TxType", "").strip().lower()
+        if tx in EXPENSE_TX_TYPES:
+            return "Expense"
+        if tx in REVENUE_TX_TYPES:
+            return "Revenue"
+        cat = row_s.get("Category", "").lower()
+        if any(k in cat for k in revenue_kw):
+            return "Revenue"
+        return "Expense"
+
+    df["Type"] = df.apply(classify, axis=1)
+    df["Month"] = df["Date"].dt.to_period("M").astype(str)
+    return df[["Date", "Client_Name", "Description", "Amount", "Category", "Type", "Month"]]
+
+
 def process_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    """Standard CSV format: flat table with named columns."""
     df.columns = [c.strip().title().replace(" ", "_") for c in df.columns]
     col_map = {}
     for col in df.columns:
         low = col.lower()
         if "date" in low:                        col_map["Date"] = col
         elif "client" in low or "name" in low:   col_map["Client_Name"] = col
-        elif "desc" in low:                      col_map["Description"] = col
+        elif "desc" in low or "memo" in low:     col_map["Description"] = col
         elif "amount" in low or "value" in low:  col_map["Amount"] = col
-        elif "cat" in low or "type" in low:      col_map["Category"] = col
+        elif "split" in low:                     col_map["Category"] = col   # QuickBooks flat export
+        elif "cat" in low:                       col_map["Category"] = col
+        elif "type" in low and "Category" not in col_map:
+            col_map["Category"] = col
     missing = [r for r in ["Date", "Client_Name", "Amount", "Category"] if r not in col_map]
     if missing:
         raise ValueError(f"Missing required columns: {missing}. Found: {list(df.columns)}")
     df = df.rename(columns={v: k for k, v in col_map.items()})
-    df["Date"] = pd.to_datetime(df["Date"], infer_datetime_format=True, errors="coerce")
+    df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
     df = df.dropna(subset=["Date"])
-    if df["Amount"].dtype == object:
-        df["Amount"] = df["Amount"].astype(str).str.replace(r"[,$\u20b9\u20ac\xa3]", "", regex=True).str.strip()
-    df["Amount"] = pd.to_numeric(df["Amount"], errors="coerce").fillna(0)
+    df["Amount"] = _clean_amount(df["Amount"]).abs()
     df["Category"] = df["Category"].astype(str).str.strip()
     revenue_kw = ["revenue", "income", "sales", "payment", "receipt", "invoice"]
-    df["Type"] = df["Category"].apply(lambda c: "Revenue" if any(k in c.lower() for k in revenue_kw) else "Expense")
+    # Check for a Transaction_Type column for QuickBooks flat exports
+    tx_col = next((c for c in df.columns if "transaction" in c.lower() and "type" in c.lower()), None)
+    if tx_col:
+        def classify_flat(row_s):
+            tx = str(row_s.get(tx_col, "")).strip().lower()
+            if tx in EXPENSE_TX_TYPES: return "Expense"
+            if tx in REVENUE_TX_TYPES: return "Revenue"
+            return "Revenue" if any(k in str(row_s.get("Category","")).lower() for k in revenue_kw) else "Expense"
+        df["Type"] = df.apply(classify_flat, axis=1)
+    else:
+        df["Type"] = df["Category"].apply(
+            lambda c: "Revenue" if any(k in c.lower() for k in revenue_kw) else "Expense"
+        )
     df["Month"] = df["Date"].dt.to_period("M").astype(str)
     df["Client_Name"] = df["Client_Name"].astype(str).str.strip()
     return df
@@ -154,20 +314,43 @@ async def upload_file(file: UploadFile = File(...)):
     if not file.filename.endswith((".csv", ".xlsx", ".xls")):
         raise HTTPException(status_code=400, detail="Only CSV or Excel files are supported.")
     contents = await file.read()
-    try:
-        df = pd.read_csv(io.BytesIO(contents)) if file.filename.endswith(".csv") else pd.read_excel(io.BytesIO(contents))
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Could not read file: {str(e)}")
-    try:
-        df = process_dataframe(df)
-    except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+
+    # ── Detect QuickBooks "Transaction List by Vendor" format ────────────────
+    is_qb_vendor = False
+    if file.filename.endswith(".csv"):
+        is_qb_vendor = _detect_quickbooks_vendor(contents)
+
+    if is_qb_vendor:
+        try:
+            df = _parse_quickbooks_vendor(contents)
+            file_format = "quickbooks-vendor"
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=f"QuickBooks parse error: {str(e)}")
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Could not parse QuickBooks file: {str(e)}")
+    else:
+        # Standard flat CSV / Excel
+        try:
+            df_raw = pd.read_csv(io.BytesIO(contents)) if file.filename.endswith(".csv") \
+                     else pd.read_excel(io.BytesIO(contents))
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Could not read file: {str(e)}")
+        try:
+            df = process_dataframe(df_raw)
+            file_format = "standard"
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+
     _processed_data = df
     return {
         "message": "File processed successfully",
+        "file_format": file_format,
         "rows": len(df),
         "clients": df["Client_Name"].nunique(),
-        "date_range": {"min": df["Date"].min().strftime("%Y-%m-%d"), "max": df["Date"].max().strftime("%Y-%m-%d")},
+        "date_range": {
+            "min": df["Date"].min().strftime("%Y-%m-%d"),
+            "max": df["Date"].max().strftime("%Y-%m-%d"),
+        },
         "clients_list": sorted(df["Client_Name"].unique().tolist()),
     }
 
