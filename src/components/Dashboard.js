@@ -14,31 +14,39 @@ export default function Dashboard({ meta, onReset }) {
   const [categories, setCategories] = useState([]);
   const [trend,      setTrend]      = useState([]);
   const [loading,    setLoading]    = useState(true);
-  const [vendor,     setVendor]     = useState(null);   // null = all
-  const [startDate,  setStartDate]  = useState(meta?.date_range?.min || '');
-  const [endDate,    setEndDate]    = useState(meta?.date_range?.max || '');
+  const [error,      setError]      = useState(null);
+  const [vendor,     setVendor]     = useState(null);
+  const [startDate,  setStartDate]  = useState('');
+  const [endDate,    setEndDate]    = useState('');
 
   const fmt = (n) => new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0,notation:'compact'}).format(n);
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
+    setError(null);
     const params = {};
     if (startDate) params.start_date = startDate;
     if (endDate)   params.end_date   = endDate;
     if (vendor)    params.vendor     = vendor;
     try {
-      const [sumRes, vendRes, catRes, trendRes] = await Promise.all([
+      const [sumRes, vendRes, catRes, trendRes] = await Promise.allSettled([
         axios.get(`${API}/summary`,    { params }),
         axios.get(`${API}/vendors`,    { params }),
         axios.get(`${API}/categories`, { params }),
         axios.get(`${API}/trend`,      { params: vendor ? { vendor } : {} }),
       ]);
-      setSummary(sumRes.data);
-      setVendors(vendRes.data.vendors);
-      setCategories(catRes.data.categories);
-      setTrend(trendRes.data.trend);
+      if (sumRes.status  === 'fulfilled') setSummary(sumRes.value.data);
+      if (vendRes.status === 'fulfilled') setVendors(vendRes.value.data.vendors || []);
+      if (catRes.status  === 'fulfilled') setCategories(catRes.value.data.categories || []);
+      if (trendRes.status=== 'fulfilled') setTrend(trendRes.value.data.trend || []);
+
+      // Surface first error if all failed
+      const firstErr = [sumRes, vendRes, catRes, trendRes].find(r => r.status === 'rejected');
+      if (firstErr && !sumRes.value && !vendRes.value) {
+        setError(firstErr.reason?.response?.data?.detail || 'Failed to load data.');
+      }
     } catch (e) {
-      console.error(e);
+      setError('Failed to load dashboard data.');
     } finally {
       setLoading(false);
     }
@@ -49,8 +57,8 @@ export default function Dashboard({ meta, onReset }) {
   const handleSelectVendor = (v) => setVendor(v);
   const resetFilters = () => {
     setVendor(null);
-    setStartDate(meta?.date_range?.min || '');
-    setEndDate(meta?.date_range?.max || '');
+    setStartDate('');
+    setEndDate('');
   };
 
   return (
@@ -113,6 +121,13 @@ export default function Dashboard({ meta, onReset }) {
           <div style={{ width:44,height:44,border:'3px solid #1e293b',borderTop:'3px solid #38bdf8',
             borderRadius:'50%',animation:'spin 0.8s linear infinite' }}/>
           <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+        </div>
+      ) : error ? (
+        <div className="glass-card p-8 text-center">
+          <p style={{ color:'#fb7185', fontSize:14, marginBottom:8 }}>⚠ {error}</p>
+          <button onClick={fetchAll} style={{ padding:'8px 20px', borderRadius:8, fontSize:13,
+            background:'rgba(56,189,248,0.1)', border:'1px solid rgba(56,189,248,0.3)',
+            color:'#38bdf8', cursor:'pointer' }}>Retry</button>
         </div>
       ) : (
         <div className="space-y-6">

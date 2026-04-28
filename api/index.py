@@ -94,17 +94,79 @@ CATEGORY_RULES = {
 }
 
 QB_TO_STANDARD = {
-    "meals and entertainment": "Meals & Entertainment",
-    "meals & entertainment": "Meals & Entertainment",
-    "job expenses:job materials:plants and soil": "Materials & Inventory",
+    "meals and entertainment":                             "Meals & Entertainment",
+    "meals & entertainment":                              "Meals & Entertainment",
+    "travel":                                             "Travel & Transportation",
+    "travel expense":                                     "Travel & Transportation",
+    "automobile":                                         "Travel & Transportation",
+    "automobile:fuel":                                    "Travel & Transportation",
+    "automobile:auto insurance":                          "Travel & Transportation",
+    "automobile:repairs and maintenance":                 "Repairs & Maintenance",
+    "utilities":                                          "Utilities",
+    "utilities:telephone":                                "Utilities",
+    "utilities:gas and electric":                         "Utilities",
+    "utilities:water":                                    "Utilities",
+    "telephone":                                          "Utilities",
+    "legal & professional fees":                          "Legal & Professional Fees",
+    "legal & professional fees:bookkeeper":               "Legal & Professional Fees",
+    "legal & professional fees:accounting":               "Legal & Professional Fees",
+    "legal & professional fees:lawyer":                   "Legal & Professional Fees",
+    "professional fees":                                  "Legal & Professional Fees",
+    "insurance":                                          "Insurance",
+    "insurance:disability insurance":                     "Insurance",
+    "insurance:liability insurance":                      "Insurance",
+    "insurance:workers compensation":                     "Insurance",
+    "rent or lease":                                      "Rent & Facilities",
+    "rent or lease:equipment rental":                     "Rent & Facilities",
+    "rent or lease:other":                                "Rent & Facilities",
+    "equipment rental":                                   "Rent & Facilities",
+    "job expenses":                                       "Materials & Inventory",
+    "job expenses:job materials":                         "Materials & Inventory",
+    "job expenses:job materials:plants and soil":         "Materials & Inventory",
     "job expenses:job materials:fountain and garden lighting": "Materials & Inventory",
-    "legal & professional fees:bookkeeper": "Legal & Professional Fees",
-    "legal & professional fees:accounting": "Legal & Professional Fees",
-    "legal & professional fees:lawyer": "Legal & Professional Fees",
-    "utilities:telephone": "Utilities",
-    "utilities:gas and electric": "Utilities",
-    "job expenses:job materials": "Materials & Inventory",
+    "job expenses:job materials:decks and patios":        "Materials & Inventory",
+    "job expenses:job materials:sprinklers and drip systems": "Materials & Inventory",
+    "landscaping services:job materials:plants and soil": "Materials & Inventory",
+    "cost of goods sold":                                 "Materials & Inventory",
+    "maintenance and repair":                             "Repairs & Maintenance",
+    "maintenance and repair:equipment repairs":           "Repairs & Maintenance",
+    "maintenance and repair:building repairs":            "Repairs & Maintenance",
+    "repairs":                                            "Repairs & Maintenance",
+    "office supplies":                                    "Office Supplies & Equipment",
+    "office expenses":                                    "Office Supplies & Equipment",
+    "office supplies & software":                         "Office Supplies & Equipment",
+    "advertising":                                        "Advertising & Marketing",
+    "advertising and promotion":                          "Advertising & Marketing",
+    "bank charges":                                       "Bank & Finance Charges",
+    "bank service charges":                               "Bank & Finance Charges",
+    "finance charge":                                     "Bank & Finance Charges",
+    "payroll expenses":                                   "Payroll & Contractors",
+    "payroll expenses:wages":                             "Payroll & Contractors",
+    "contractor":                                         "Payroll & Contractors",
+    # Transaction types that bleed into category column
+    "purchase order":                                     "Materials & Inventory",
+    "bill":                                               "Miscellaneous",
+    "check":                                              "Miscellaneous",
+    "uncategorized expense":                              "Miscellaneous",
+    "miscellaneous":                                      "Miscellaneous",
+    "ask my accountant":                                  "Miscellaneous",
+    "opening balance equity":                             "Miscellaneous",
 }
+
+# Partial-match prefixes (applied when no exact match found)
+QB_PREFIX_MAP = [
+    ("job expenses",                "Materials & Inventory"),
+    ("landscaping services",        "Materials & Inventory"),
+    ("maintenance and repair",      "Repairs & Maintenance"),
+    ("automobile",                  "Travel & Transportation"),
+    ("legal & professional fees",   "Legal & Professional Fees"),
+    ("insurance",                   "Insurance"),
+    ("utilities",                   "Utilities"),
+    ("payroll",                     "Payroll & Contractors"),
+    ("rent or lease",               "Rent & Facilities"),
+    ("advertising",                 "Advertising & Marketing"),
+    ("office",                      "Office Supplies & Equipment"),
+]
 
 
 def _clean_amount(series: pd.Series) -> pd.Series:
@@ -115,7 +177,14 @@ def _clean_amount(series: pd.Series) -> pd.Series:
 
 def _normalise_category(cat: str) -> str:
     low = cat.strip().lower()
-    return QB_TO_STANDARD.get(low, cat.strip())
+    # Exact match
+    if low in QB_TO_STANDARD:
+        return QB_TO_STANDARD[low]
+    # Prefix match
+    for prefix, standard in QB_PREFIX_MAP:
+        if low.startswith(prefix):
+            return standard
+    return cat.strip()
 
 
 def _rule_classify(memo: str, vendor: str, assigned_cat: str) -> dict:
@@ -225,11 +294,14 @@ def _parse_quickbooks_vendor_xlsx(raw_bytes: bytes) -> pd.DataFrame:
         acct   = str(row.iloc[col_acct]).strip()
         split  = str(row.iloc[col_split]).strip()
 
-        # Skip pure payment/transfer rows (they just move money, not real expenses)
+        # Skip pure payment/transfer rows
         if txtype.lower() in SKIP_TX_TYPES and split.lower() in internal_accts:
             continue
 
-        description = memo if memo and memo not in ("-", "nan", "") else acct
+        # Memo: only use if it's meaningful — not an account/payment name
+        meaningful_memo = memo not in ("-", "nan", "") and memo.lower() not in internal_accts
+        description = memo if meaningful_memo else ""
+
         category = split if split and split.lower() not in ("", "nan") else acct
         if category.lower() in internal_accts:
             category = acct if acct.lower() not in internal_accts else txtype
@@ -247,7 +319,7 @@ def _parse_quickbooks_vendor_xlsx(raw_bytes: bytes) -> pd.DataFrame:
     df["Date"]   = pd.to_datetime(df["Date"], errors="coerce")
     df = df.dropna(subset=["Date"])
     df["Amount"]   = _clean_amount(df["Amount"]).abs()
-    df["Category"] = df["Category"].astype(str).str.strip()
+    df["Category"] = df["Category"].astype(str).str.strip().apply(_normalise_category)
     df["Vendor"]   = df["Vendor"].astype(str).str.strip()
     df["Month"]    = df["Date"].dt.to_period("M").astype(str)
     return df[["Date", "Vendor", "Memo", "Amount", "Category", "TxType", "Month"]]
@@ -313,7 +385,7 @@ def _parse_quickbooks_vendor_csv(raw_bytes: bytes) -> pd.DataFrame:
     df["Date"]   = pd.to_datetime(df["Date"], errors="coerce")
     df = df.dropna(subset=["Date"])
     df["Amount"]   = _clean_amount(df["Amount"]).abs()
-    df["Category"] = df["Category"].astype(str).str.strip()
+    df["Category"] = df["Category"].astype(str).str.strip().apply(_normalise_category)
     df["Vendor"]   = df["Vendor"].astype(str).str.strip()
     df["Month"]    = df["Date"].dt.to_period("M").astype(str)
     return df[["Date", "Vendor", "Memo", "Amount", "Category", "TxType", "Month"]]
@@ -338,7 +410,7 @@ def _parse_standard(df_raw: pd.DataFrame) -> pd.DataFrame:
     df["Date"]     = pd.to_datetime(df["Date"], errors="coerce")
     df = df.dropna(subset=["Date"])
     df["Amount"]   = _clean_amount(df["Amount"]).abs()
-    df["Category"] = df["Category"].astype(str).str.strip()
+    df["Category"] = df["Category"].astype(str).str.strip().apply(_normalise_category)
     df["Vendor"]   = df["Vendor"].astype(str).str.strip()
     df["Memo"]     = df.get("Memo", pd.Series([""] * len(df))).astype(str).str.strip()
     df["TxType"]   = ""
