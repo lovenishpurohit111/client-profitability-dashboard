@@ -1,215 +1,157 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import API from '../config';
 import SummaryCards from './SummaryCards';
-import ClientTable from './ClientTable';
-import ProfitBarChart from './ProfitBarChart';
-import ExpensePieChart from './ExpensePieChart';
-import MonthlyLineChart from './MonthlyLineChart';
-import InvoiceAlerts from './InvoiceAlerts';
-import ExportButtons from './ExportButtons';
-import AIInsights from './AIInsights';
-import HeatMap from './HeatMap';
-import ConcentrationRisk from './ConcentrationRisk';
-import CategoryAudit from './CategoryAudit';
+import VendorTable from './VendorTable';
+import CategoryBreakdown from './CategoryBreakdown';
+import SpendTrend from './SpendTrend';
+import TransactionLog from './TransactionLog';
+import ReconcilePanel from './ReconcilePanel';
 
 export default function Dashboard({ meta, onReset }) {
-  const [data,    setData]    = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error,   setError]   = useState(null);
-  const dashboardRef          = useRef(null);
+  const [summary,    setSummary]    = useState(null);
+  const [vendors,    setVendors]    = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [trend,      setTrend]      = useState([]);
+  const [loading,    setLoading]    = useState(true);
+  const [vendor,     setVendor]     = useState(null);   // null = all
+  const [startDate,  setStartDate]  = useState(meta?.date_range?.min || '');
+  const [endDate,    setEndDate]    = useState(meta?.date_range?.max || '');
 
-  const [startDate,      setStartDate]      = useState(meta?.date_range?.min || '');
-  const [endDate,        setEndDate]        = useState(meta?.date_range?.max || '');
-  const [selectedClient, setSelectedClient] = useState('All');
+  const fmt = (n) => new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0,notation:'compact'}).format(n);
 
-  const fetchDashboard = useCallback(async () => {
-    setLoading(true); setError(null);
+  const fetchAll = useCallback(async () => {
+    setLoading(true);
+    const params = {};
+    if (startDate) params.start_date = startDate;
+    if (endDate)   params.end_date   = endDate;
+    if (vendor)    params.vendor     = vendor;
     try {
-      const params = {};
-      if (startDate)              params.start_date = startDate;
-      if (endDate)                params.end_date   = endDate;
-      if (selectedClient !== 'All') params.client   = selectedClient;
-      const res = await axios.get(`${API}/dashboard`, { params });
-      setData(res.data);
-    } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to load dashboard data.');
+      const [sumRes, vendRes, catRes, trendRes] = await Promise.all([
+        axios.get(`${API}/summary`,    { params }),
+        axios.get(`${API}/vendors`,    { params }),
+        axios.get(`${API}/categories`, { params }),
+        axios.get(`${API}/trend`,      { params: vendor ? { vendor } : {} }),
+      ]);
+      setSummary(sumRes.data);
+      setVendors(vendRes.data.vendors);
+      setCategories(catRes.data.categories);
+      setTrend(trendRes.data.trend);
+    } catch (e) {
+      console.error(e);
     } finally {
       setLoading(false);
     }
-  }, [startDate, endDate, selectedClient]);
+  }, [vendor, startDate, endDate]);
 
-  useEffect(() => { fetchDashboard(); }, [fetchDashboard]);
+  useEffect(() => { fetchAll(); }, [fetchAll]);
 
-  const clients = ['All', ...(meta?.clients_list || [])];
+  const handleSelectVendor = (v) => setVendor(v);
+  const resetFilters = () => {
+    setVendor(null);
+    setStartDate(meta?.date_range?.min || '');
+    setEndDate(meta?.date_range?.max || '');
+  };
 
   return (
     <div className="min-h-screen px-4 py-6 max-w-7xl mx-auto">
 
-      {/* Top Nav */}
-      <div className="flex items-center justify-between mb-8 animate-fade-in">
+      {/* Top bar */}
+      <div className="flex items-center justify-between mb-6 animate-fade-in">
         <div className="flex items-center gap-3">
-          <div style={{ width:40,height:40,borderRadius:10,background:'linear-gradient(135deg,#34d399,#22d3ee)',
-            display:'flex',alignItems:'center',justifyContent:'center' }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"
-                stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </div>
+          <div style={{ width:42,height:42,borderRadius:11,background:'linear-gradient(135deg,#38bdf8,#818cf8)',
+            display:'flex',alignItems:'center',justifyContent:'center',fontSize:20 }}>🔍</div>
           <div>
-            <div className="text-white font-semibold text-lg" style={{ fontFamily:'DM Serif Display' }}>ProfitLens</div>
-            <div className="text-slate-500 text-xs font-mono">{meta?.rows} rows · {meta?.clients} clients{meta?.file_format === 'quickbooks-vendor' ? ' · QuickBooks format ✓' : ''}</div>
+            <div className="text-white font-semibold text-lg" style={{ fontFamily:'DM Serif Display' }}>VendorLens</div>
+            <div className="text-slate-500 text-xs font-mono">
+              {meta?.rows} transactions · {meta?.vendors} vendors
+              {meta?.file_format==='quickbooks-vendor' && <span style={{ color:'#38bdf8' }}> · QuickBooks ✓</span>}
+            </div>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          {data && <ExportButtons dashboardRef={dashboardRef} data={data} />}
-          <button onClick={onReset}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm text-slate-400 hover:text-white transition-colors"
-            style={{ background:'rgba(30,41,59,0.6)', border:'1px solid #334155' }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              <polyline points="17 8 12 3 7 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              <line x1="12" y1="3" x2="12" y2="15" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-            </svg>
-            New File
-          </button>
-        </div>
+        <button onClick={onReset}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm text-slate-400 hover:text-white transition-colors"
+          style={{ background:'rgba(30,41,59,0.6)',border:'1px solid #334155' }}>
+          ↑ New File
+        </button>
       </div>
 
       {/* Filters */}
       <div className="glass-card p-4 mb-6 animate-slide-up">
         <div className="flex flex-wrap items-center gap-4">
-          <div className="flex items-center gap-2">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-slate-400">
-              <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-            <span className="text-slate-400 text-xs font-mono uppercase tracking-wider">Filters</span>
-          </div>
+          <span className="text-slate-400 text-xs font-mono uppercase tracking-wider">Filters</span>
           <div className="flex items-center gap-2">
             <label className="text-slate-500 text-xs">From</label>
-            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
-              className="px-3 py-1.5 rounded-lg text-sm text-slate-300 focus:outline-none"
-              style={{ background:'#0f172a', border:'1px solid #334155' }} />
+            <input type="date" value={startDate} onChange={e=>setStartDate(e.target.value)}
+              className="px-3 py-1.5 rounded-lg text-sm text-slate-300"
+              style={{ background:'#0f172a',border:'1px solid #334155',outline:'none' }}/>
           </div>
           <div className="flex items-center gap-2">
             <label className="text-slate-500 text-xs">To</label>
-            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
-              className="px-3 py-1.5 rounded-lg text-sm text-slate-300 focus:outline-none"
-              style={{ background:'#0f172a', border:'1px solid #334155' }} />
+            <input type="date" value={endDate} onChange={e=>setEndDate(e.target.value)}
+              className="px-3 py-1.5 rounded-lg text-sm text-slate-300"
+              style={{ background:'#0f172a',border:'1px solid #334155',outline:'none' }}/>
           </div>
-          <div className="flex items-center gap-2">
-            <label className="text-slate-500 text-xs">Client</label>
-            <select value={selectedClient} onChange={e => setSelectedClient(e.target.value)}
-              className="px-3 py-1.5 rounded-lg text-sm text-slate-300 focus:outline-none"
-              style={{ background:'#0f172a', border:'1px solid #334155' }}>
-              {clients.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
-          <button onClick={() => { setStartDate(meta?.date_range?.min||''); setEndDate(meta?.date_range?.max||''); setSelectedClient('All'); }}
+          {vendor && (
+            <div style={{ display:'flex',alignItems:'center',gap:8,padding:'4px 12px',borderRadius:8,
+              background:'rgba(56,189,248,0.1)',border:'1px solid rgba(56,189,248,0.3)' }}>
+              <span style={{ fontSize:12,color:'#38bdf8' }}>📌 {vendor}</span>
+              <button onClick={()=>setVendor(null)}
+                style={{ background:'none',border:'none',color:'#38bdf8',cursor:'pointer',fontSize:14,lineHeight:1 }}>✕</button>
+            </div>
+          )}
+          <button onClick={resetFilters}
             className="px-3 py-1.5 rounded-lg text-xs text-slate-400 hover:text-white transition-colors"
-            style={{ background:'rgba(51,65,85,0.4)', border:'1px solid #334155' }}>
+            style={{ background:'rgba(51,65,85,0.4)',border:'1px solid #334155' }}>
             Reset
           </button>
         </div>
       </div>
 
-      {/* Loading */}
-      {loading && (
+      {loading ? (
         <div className="flex items-center justify-center py-24">
-          <div className="flex flex-col items-center gap-4">
-            <div style={{ width:48,height:48,border:'3px solid #1e293b',borderTop:'3px solid #34d399',
-              borderRadius:'50%',animation:'spin 0.8s linear infinite' }} />
-            <p className="text-slate-500 text-sm">Crunching numbers…</p>
-          </div>
+          <div style={{ width:44,height:44,border:'3px solid #1e293b',borderTop:'3px solid #38bdf8',
+            borderRadius:'50%',animation:'spin 0.8s linear infinite' }}/>
           <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
         </div>
-      )}
+      ) : (
+        <div className="space-y-6">
 
-      {error && !loading && (
-        <div className="glass-card p-6 text-center text-rose-400"><p>{error}</p></div>
-      )}
+          {/* KPIs */}
+          <SummaryCards summary={summary}/>
 
-      {data && !loading && (
-        <div ref={dashboardRef} className="space-y-6">
-
-          {/* Concentration risk banner */}
-          {data.concentration_risk && (
-            <ConcentrationRisk risk={data.concentration_risk} />
+          {/* Top spend highlight */}
+          {summary?.top_vendor && (
+            <div style={{ background:'rgba(251,113,133,0.06)',border:'1px solid rgba(251,113,133,0.2)',
+              borderRadius:14,padding:'14px 20px',display:'flex',alignItems:'center',gap:16 }}>
+              <span style={{ fontSize:20 }}>🏆</span>
+              <div>
+                <span className="text-xs font-mono uppercase tracking-wider" style={{ color:'#fb7185' }}>Top Vendor</span>
+                <p className="text-white font-semibold mt-0.5">
+                  <span style={{ color:'#fb7185' }}>{summary.top_vendor}</span> is your highest-spend vendor ·{' '}
+                  <span style={{ color:'#fbbf24' }}>{summary.top_category}</span> is the biggest expense category
+                </p>
+              </div>
+            </div>
           )}
-
-          {/* KPI Cards */}
-          <SummaryCards summary={data.summary} />
-
-          {/* AI Insights */}
-          <AIInsights data={data} />
-
-          {/* Invoice Alerts */}
-          <InvoiceAlerts alerts={data.invoice_alerts || []} />
 
           {/* Charts row */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="glass-card p-6 animate-slide-up stagger-2">
-              <ChartHeader title="Profit per Client" subtitle="Revenue minus expenses" icon="📊" />
-              <ProfitBarChart clients={data.clients} />
-            </div>
-            <div className="glass-card p-6 animate-slide-up stagger-3">
-              <ChartHeader title="Expense Breakdown" subtitle="By category" icon="🥧" />
-              <ExpensePieChart breakdown={data.expense_breakdown} />
-            </div>
+            <CategoryBreakdown categories={categories}/>
+            <SpendTrend trend={trend}/>
           </div>
 
-          {/* Monthly line chart + forecast */}
-          <div className="glass-card p-6 animate-slide-up stagger-4">
-            <ChartHeader
-              title="Monthly Trend"
-              subtitle="Revenue, expenses & profit over time — with 3-month forecast"
-              icon="📈"
-            />
-            <MonthlyLineChart trend={data.monthly_trend} forecast={data.forecast || []} />
-          </div>
+          {/* Reconciliation — centerpiece */}
+          <ReconcilePanel vendor={vendor} vendors={meta?.vendor_list || []}/>
 
-          {/* Profitability heatmap */}
-          {data.heatmap?.months?.length > 0 && selectedClient === 'All' && (
-            <HeatMap heatmap={data.heatmap} />
-          )}
+          {/* Vendor table */}
+          <VendorTable vendors={vendors} onSelectVendor={handleSelectVendor} selectedVendor={vendor}/>
 
-          {/* Category Audit */}
-          <CategoryAudit clients={meta?.clients_list || []} />
-
-          {/* Client table */}
-          <div className="glass-card animate-slide-up stagger-4">
-            <div className="p-6 border-b border-slate-800 flex items-start justify-between">
-              <ChartHeader
-                title="Client Breakdown"
-                subtitle="Click any row to view full transaction history · sortable & searchable"
-                icon="👥"
-              />
-              <div className="flex items-center gap-3 text-xs font-mono text-slate-600 mt-1">
-                {[['A','#34d399','Excellent'],['B','#22d3ee','Good'],['C','#fbbf24','Fair'],['D','#fb7185','At Risk']].map(([g,c,l]) => (
-                  <span key={g} className="flex items-center gap-1">
-                    <span style={{ color:c, fontWeight:700 }}>{g}</span>
-                    <span style={{ color:'#475569' }}>{l}</span>
-                  </span>
-                ))}
-              </div>
-            </div>
-            <ClientTable clients={data.clients} />
-          </div>
+          {/* Transaction log */}
+          <TransactionLog vendor={vendor} categories={meta?.category_list || []}/>
 
         </div>
       )}
-    </div>
-  );
-}
-
-function ChartHeader({ title, subtitle, icon }) {
-  return (
-    <div className="mb-4">
-      <div className="flex items-center gap-2 mb-1">
-        <span>{icon}</span>
-        <h2 className="text-white font-semibold" style={{ fontFamily:'DM Serif Display', fontSize:'1.1rem' }}>{title}</h2>
-      </div>
-      <p className="text-slate-500 text-xs font-mono">{subtitle}</p>
     </div>
   );
 }
