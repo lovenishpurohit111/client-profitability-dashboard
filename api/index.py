@@ -215,38 +215,35 @@ def _normalise_category(cat: str) -> str:
 
 def _rule_classify(memo: str, vendor: str, assigned_cat: str) -> dict:
     text = f"{memo} {vendor}".lower()
-    norm_assigned = _normalise_category(assigned_cat)
+    assigned_standard = _normalise_category(assigned_cat)
 
     best_cat, best_score = "Miscellaneous", 0
     for cat, keywords in CATEGORY_RULES.items():
-        score = sum(2 if kw in text else 0 for kw in keywords if len(kw) > 3 and kw in text)
+        score = sum(2 for kw in keywords if len(kw) > 3 and kw in text)
         score += sum(1 for kw in keywords if kw in text)
         if score > best_score:
             best_score, best_cat = score, cat
 
-    # Check if assigned category already maps to our standard
-    assigned_standard = _normalise_category(assigned_cat)
-    assigned_low = assigned_standard.lower()
-    suggested_low = best_cat.lower()
+    suggested = best_cat if best_score > 0 else assigned_standard
 
-    # Fuzzy match: do both point to same concept?
-    match = (
-        assigned_low == suggested_low or
-        best_cat.split("&")[0].strip().lower() in assigned_low or
-        assigned_low.split(":")[0].strip() in suggested_low or
-        best_score >= 3
-    )
+    # Strict match: suggested must equal assigned (after normalisation)
+    # Allow minor variations like "Meals & Entertainment" vs "Meals and Entertainment"
+    def _canon(s):
+        return s.lower().replace("and", "&").replace("  ", " ").strip()
+
+    match = _canon(suggested) == _canon(assigned_standard)
 
     confidence = "high" if best_score >= 4 else "medium" if best_score >= 2 else "low"
     if not memo or memo in ("—", "nan", ""):
         confidence = "low"
 
     return {
-        "suggested_category": best_cat if best_score > 0 else assigned_standard,
-        "match": match,
-        "confidence": confidence,
+        "suggested_category": suggested,
+        "match":              match,
+        "confidence":         confidence,
         "reason": (
-            f"Memo/vendor contains keywords matching '{best_cat}'" if best_score > 0
+            f"Memo/vendor keywords match '{suggested}'" if match and best_score > 0
+            else f"Expected '{suggested}' but assigned '{assigned_standard}'" if not match
             else f"No strong keyword match — keeping assigned '{assigned_standard}'"
         ),
         "source": "rule-based",
