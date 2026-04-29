@@ -46,78 +46,178 @@ SKIP_TX_TYPES = {"bill payment (check)", "bill payment (credit card)", "liabilit
 
 # ── Category taxonomy for rule-based classification ───────────────────────────
 CATEGORY_RULES = {
+    "Bank & Finance Charges": [
+        "bank fee", "bank charge", "service charge", "finance charge",
+        "wire transfer", "transaction fee", "foreign exchange", "fx fee",
+        "forex", "currency conversion", "rate adjustment", "exchange rate",
+        "foreign transaction", "overdraft", "interest charge", "late fee",
+        "annual fee", "monthly fee", "atm fee", "nsf fee", "returned item",
+        "stripe fee", "paypal fee", "square fee", "merchant fee",
+        "processing fee", "payment processing",
+    ],
     "Meals & Entertainment": [
         "lunch", "dinner", "breakfast", "meal", "food", "restaurant", "coffee",
         "cafe", "catering", "snack", "drink", "burger", "pizza", "sushi",
         "entertainment", "concert", "event", "team lunch", "client dinner",
+        "starbucks", "chipotle", "mcdonald", "subway", "doordash", "grubhub",
+        "uber eats", "postmates",
     ],
     "Travel & Transportation": [
-        "flight", "hotel", "airbnb", "uber", "lyft", "taxi", "car rental",
-        "gas", "fuel", "mileage", "parking", "toll", "train", "transit",
-        "travel", "accommodation", "lodging", "airline",
+        "flight", "airfare", "airline ticket", "hotel stay", "hotel booking",
+        "airbnb", "uber ride", "lyft ride", "taxi", "car rental", "vehicle rental",
+        "gas station", "fuel", "mileage", "parking fee", "toll", "train ticket",
+        "transit pass", "travel expense", "accommodation", "lodging",
     ],
     "Software & Subscriptions": [
-        "software", "subscription", "saas", "license", "app", "tool",
-        "platform", "stripe", "quickbooks", "slack", "zoom", "dropbox",
-        "notion", "figma", "github", "gitlab", "jira", "monday", "asana",
-        "hubspot", "salesforce", "adobe", "microsoft", "google workspace",
-        "canva", "hootsuite", "mailchimp", "klaviyo", "ahrefs", "semrush",
-        "datadog", "new relic", "hotjar", "buffer",
+        "software", "subscription", "saas", "license", "app subscription",
+        "tool subscription", "platform fee", "stripe", "quickbooks", "slack",
+        "zoom", "dropbox", "notion", "figma", "github", "gitlab", "jira",
+        "monday.com", "asana", "hubspot", "salesforce", "adobe", "microsoft 365",
+        "google workspace", "canva", "hootsuite", "mailchimp", "klaviyo",
+        "ahrefs", "semrush", "datadog", "new relic", "hotjar", "buffer",
+        "annual plan", "monthly plan", "annual subscription",
     ],
     "Cloud & Hosting": [
         "aws", "amazon web services", "azure", "google cloud", "gcp", "heroku",
-        "digitalocean", "linode", "vultr", "cloudflare", "hosting", "server",
-        "compute", "gpu", "storage", "cdn", "bandwidth", "ec2", "s3", "rds",
-        "container", "docker", "kubernetes",
+        "digitalocean", "linode", "vultr", "cloudflare", "web hosting",
+        "server hosting", "compute instance", "gpu compute", "cloud storage",
+        "cdn", "bandwidth", "ec2", "s3 storage", "rds", "container hosting",
+        "docker hub", "kubernetes",
     ],
     "Advertising & Marketing": [
-        "advertising", "ads", "google ads", "facebook ads", "meta ads",
-        "linkedin ads", "ppc", "seo", "sem", "campaign", "marketing",
-        "promotion", "sponsored", "influencer", "newsletter", "email campaign",
+        "google ads", "facebook ads", "meta ads", "linkedin ads", "yelp ads",
+        "twitter ads", "tiktok ads", "ppc campaign", "ad campaign", "ad spend",
+        "advertising spend", "sponsored post", "influencer", "seo service",
+        "marketing agency", "pr agency",
     ],
     "Office Supplies & Equipment": [
-        "office", "supplies", "stationery", "paper", "printer", "toner",
-        "desk", "chair", "equipment", "hardware", "laptop", "computer",
-        "monitor", "keyboard", "mouse", "headset", "cable", "usb",
+        "office supplies", "stationery", "printer paper", "toner cartridge",
+        "office equipment", "computer equipment", "laptop purchase", "monitor",
+        "keyboard", "mouse", "headset", "desk", "chair", "office furniture",
+        "staples", "office depot", "best buy", "amazon supplies",
     ],
     "Utilities": [
-        "electricity", "water", "gas", "utilities", "internet", "broadband",
-        "phone", "telephone", "mobile", "cell", "cable", "utility bill",
-        "pg&e", "pacific gas", "at&t", "verizon", "comcast",
+        "electricity bill", "electric bill", "gas bill", "water bill",
+        "internet bill", "broadband", "phone bill", "telephone bill",
+        "mobile bill", "cell phone", "utility payment", "pg&e", "at&t bill",
+        "verizon bill", "comcast", "spectrum", "utility service",
     ],
     "Legal & Professional Fees": [
-        "legal", "lawyer", "attorney", "law firm", "compliance", "contract",
-        "accounting", "bookkeeper", "bookkeeping", "cpa", "auditor", "audit",
-        "consulting", "consultant", "advisor", "advisory", "professional",
-        "notary", "filing fee",
+        "legal fee", "attorney fee", "lawyer", "law firm", "legal services",
+        "bookkeeping", "bookkeeper", "accounting fee", "cpa fee", "audit fee",
+        "tax preparation", "consulting fee", "professional services",
+        "notary fee", "filing fee", "compliance fee",
     ],
     "Insurance": [
-        "insurance", "premium", "coverage", "policy", "liability", "workers comp",
-        "health insurance", "dental", "vision", "life insurance", "indemnity",
+        "insurance premium", "insurance payment", "liability insurance",
+        "workers compensation", "health insurance", "dental insurance",
+        "vision insurance", "life insurance", "auto insurance", "vehicle insurance",
+        "property insurance", "business insurance", "policy payment",
     ],
     "Rent & Facilities": [
-        "rent", "lease", "office rent", "warehouse", "storage unit", "coworking",
-        "wework", "regus", "facility", "maintenance", "repairs", "janitorial",
-        "cleaning", "landscaping", "property",
+        "office rent", "rent payment", "lease payment", "coworking space",
+        "wework", "regus", "storage unit rental", "warehouse rent",
+        "facility maintenance", "janitorial", "cleaning service", "landscaping service",
     ],
     "Payroll & Contractors": [
-        "payroll", "salary", "wages", "contractor", "freelancer", "subcontractor",
-        "staffing", "temp", "invoice payment", "consultant fee",
-    ],
-    "Bank & Finance Charges": [
-        "bank fee", "wire transfer", "transaction fee", "service charge",
-        "interest", "loan payment", "credit card fee", "paypal fee", "stripe fee",
-        "finance charge", "overdraft",
+        "payroll", "direct deposit", "salary payment", "contractor payment",
+        "freelancer payment", "subcontractor", "staffing agency",
+        "temp agency", "labor cost",
     ],
     "Materials & Inventory": [
-        "materials", "inventory", "stock", "parts", "components", "raw materials",
-        "supplies", "merchandise", "product", "lumber", "hardware", "tools",
-        "equipment rental", "machinery",
+        "materials", "inventory", "raw materials", "supplies purchase",
+        "parts", "components", "merchandise", "product purchase",
+        "lumber", "hardware purchase", "tools purchase", "equipment purchase",
+        "home depot", "lowes", "grainger",
+    ],
+    "Repairs & Maintenance": [
+        "repair service", "maintenance service", "equipment repair",
+        "building repair", "vehicle repair", "hvac", "plumbing", "electrical repair",
+        "it support", "tech support",
     ],
     "Miscellaneous": [
-        "misc", "miscellaneous", "other", "general", "opening balance",
+        "miscellaneous", "general expense", "other expense",
     ],
 }
+
+# Vendor name → category overrides (checked before keyword scoring)
+VENDOR_CATEGORY_MAP = {
+    "at&t":                    "Utilities",
+    "verizon":                 "Utilities",
+    "comcast":                 "Utilities",
+    "spectrum":                "Utilities",
+    "pg&e":                    "Utilities",
+    "pacific gas":             "Utilities",
+    "con edison":              "Utilities",
+    "amazon web services":     "Cloud & Hosting",
+    "aws":                     "Cloud & Hosting",
+    "google cloud":            "Cloud & Hosting",
+    "microsoft azure":         "Cloud & Hosting",
+    "digitalocean":            "Cloud & Hosting",
+    "heroku":                  "Cloud & Hosting",
+    "cloudflare":              "Cloud & Hosting",
+    "google ads":              "Advertising & Marketing",
+    "facebook ads":            "Advertising & Marketing",
+    "meta ads":                "Advertising & Marketing",
+    "linkedin":                "Advertising & Marketing",
+    "yelp":                    "Advertising & Marketing",
+    "slack":                   "Software & Subscriptions",
+    "zoom":                    "Software & Subscriptions",
+    "adobe":                   "Software & Subscriptions",
+    "github":                  "Software & Subscriptions",
+    "gitlab":                  "Software & Subscriptions",
+    "figma":                   "Software & Subscriptions",
+    "asana":                   "Software & Subscriptions",
+    "notion":                  "Software & Subscriptions",
+    "quickbooks":              "Software & Subscriptions",
+    "hubspot":                 "Software & Subscriptions",
+    "dropbox":                 "Software & Subscriptions",
+    "datadog":                 "Software & Subscriptions",
+    "new relic":               "Software & Subscriptions",
+    "stripe":                  "Bank & Finance Charges",
+    "paypal":                  "Bank & Finance Charges",
+    "square":                  "Bank & Finance Charges",
+    "state farm":              "Insurance",
+    "brosnahan insurance":     "Insurance",
+    "allstate":                "Insurance",
+    "progressive":             "Insurance",
+    "geico":                   "Insurance",
+    "home depot":              "Materials & Inventory",
+    "lowes":                   "Materials & Inventory",
+    "grainger":                "Materials & Inventory",
+    "staples":                 "Office Supplies & Equipment",
+    "office depot":            "Office Supplies & Equipment",
+    "marriott":                "Travel & Transportation",
+    "hilton":                  "Travel & Transportation",
+    "hyatt":                   "Travel & Transportation",
+    "airbnb":                  "Travel & Transportation",
+    "united airlines":         "Travel & Transportation",
+    "delta airlines":          "Travel & Transportation",
+    "southwest airlines":      "Travel & Transportation",
+    "american airlines":       "Travel & Transportation",
+    "uber":                    "Travel & Transportation",
+    "lyft":                    "Travel & Transportation",
+    "hertz":                   "Travel & Transportation",
+    "avis":                    "Travel & Transportation",
+    "enterprise rent":         "Travel & Transportation",
+    "starbucks":               "Meals & Entertainment",
+    "chipotle":                "Meals & Entertainment",
+    "mcdonald":                "Meals & Entertainment",
+    "subway":                  "Meals & Entertainment",
+    "doordash":                "Meals & Entertainment",
+}
+
+# Memo patterns that override keyword scoring (checked before anything else)
+MEMO_OVERRIDE_PATTERNS = [
+    (["foreign exchange", "fx fee", "forex", "rate adjustment",
+       "exchange rate", "foreign transaction fee", "currency conversion",
+       "wire fee", "wire transfer fee"], "Bank & Finance Charges"),
+    (["bank fee", "bank charge", "service charge", "finance charge",
+       "overdraft", "nsf", "returned item"], "Bank & Finance Charges"),
+    (["payroll", "direct deposit", "ach transfer salary"], "Payroll & Contractors"),
+    (["insurance premium", "policy payment", "workers comp"], "Insurance"),
+    (["rent payment", "lease payment", "office rent"], "Rent & Facilities"),
+]
 
 QB_TO_STANDARD = {
     "meals and entertainment":                             "Meals & Entertainment",
@@ -165,6 +265,10 @@ QB_TO_STANDARD = {
     "advertising and promotion":                          "Advertising & Marketing",
     "bank charges":                                       "Bank & Finance Charges",
     "bank service charges":                               "Bank & Finance Charges",
+    "bank fees & service charges":                        "Bank & Finance Charges",
+    "general business expenses:bank fees & service charges": "Bank & Finance Charges",
+    "general business expenses:bank fees and service charges": "Bank & Finance Charges",
+    "business expenses:bank fees":                        "Bank & Finance Charges",
     "finance charge":                                     "Bank & Finance Charges",
     "payroll expenses":                                   "Payroll & Contractors",
     "payroll expenses:wages":                             "Payroll & Contractors",
@@ -181,6 +285,7 @@ QB_TO_STANDARD = {
 
 # Partial-match prefixes (applied when no exact match found)
 QB_PREFIX_MAP = [
+    ("general business expenses:bank", "Bank & Finance Charges"),
     ("job expenses",                "Materials & Inventory"),
     ("landscaping services",        "Materials & Inventory"),
     ("maintenance and repair",      "Repairs & Maintenance"),
@@ -213,40 +318,64 @@ def _normalise_category(cat: str) -> str:
     return cat.strip()
 
 
+def _canon(s: str) -> str:
+    return s.lower().replace(" and ", " & ").replace("  ", " ").strip()
+
+
 def _rule_classify(memo: str, vendor: str, assigned_cat: str) -> dict:
-    text = f"{memo} {vendor}".lower()
+    memo_lower   = (memo or "").lower().strip()
+    vendor_lower = (vendor or "").lower().strip()
     assigned_standard = _normalise_category(assigned_cat)
 
+    # 1. Memo override patterns — highest priority (e.g. "Foreign Exchange Rate Adjustment")
+    for patterns, cat in MEMO_OVERRIDE_PATTERNS:
+        if any(p in memo_lower for p in patterns):
+            match = _canon(cat) == _canon(assigned_standard)
+            return {
+                "suggested_category": cat,
+                "match":              match,
+                "confidence":         "high",
+                "reason":             f"Memo pattern matches '{cat}'" if match
+                                      else f"Memo indicates '{cat}' but assigned '{assigned_standard}'",
+                "source":             "rule-based",
+            }
+
+    # 2. Vendor name override — known vendors mapped directly
+    for vendor_key, cat in VENDOR_CATEGORY_MAP.items():
+        if vendor_key in vendor_lower:
+            match = _canon(cat) == _canon(assigned_standard)
+            return {
+                "suggested_category": cat,
+                "match":              match,
+                "confidence":         "high",
+                "reason":             f"Known vendor '{vendor}' maps to {cat}" if match
+                                      else f"Vendor '{vendor}' → {cat} but assigned '{assigned_standard}'",
+                "source":             "rule-based",
+            }
+
+    # 3. Keyword scoring on memo + vendor text
+    text = f"{memo_lower} {vendor_lower}"
     best_cat, best_score = "Miscellaneous", 0
     for cat, keywords in CATEGORY_RULES.items():
-        score = sum(2 for kw in keywords if len(kw) > 3 and kw in text)
-        score += sum(1 for kw in keywords if kw in text)
+        score = sum(2 for kw in keywords if len(kw) > 6 and kw in text)
+        score += sum(1 for kw in keywords if 3 < len(kw) <= 6 and kw in text)
         if score > best_score:
             best_score, best_cat = score, cat
 
-    suggested = best_cat if best_score > 0 else assigned_standard
-
-    # Strict match: suggested must equal assigned (after normalisation)
-    # Allow minor variations like "Meals & Entertainment" vs "Meals and Entertainment"
-    def _canon(s):
-        return s.lower().replace("and", "&").replace("  ", " ").strip()
-
-    match = _canon(suggested) == _canon(assigned_standard)
-
+    suggested  = best_cat if best_score > 0 else assigned_standard
     confidence = "high" if best_score >= 4 else "medium" if best_score >= 2 else "low"
     if not memo or memo in ("—", "nan", ""):
         confidence = "low"
 
+    match = _canon(suggested) == _canon(assigned_standard)
     return {
         "suggested_category": suggested,
         "match":              match,
         "confidence":         confidence,
-        "reason": (
-            f"Memo/vendor keywords match '{suggested}'" if match and best_score > 0
-            else f"Expected '{suggested}' but assigned '{assigned_standard}'" if not match
-            else f"No strong keyword match — keeping assigned '{assigned_standard}'"
-        ),
-        "source": "rule-based",
+        "reason":             f"Keywords match '{suggested}'" if match and best_score > 0
+                              else f"Expected '{suggested}' but assigned '{assigned_standard}'" if not match
+                              else f"No strong match — keeping '{assigned_standard}'",
+        "source":             "rule-based",
     }
 
 
@@ -641,56 +770,53 @@ async def reconcile(payload: dict):
 
 
 async def _ddg_reconcile(combos: list) -> list:
-    """DuckDuckGo + rule-based category verification (no API key needed)."""
+    """DuckDuckGo + rule-based category verification (no API key needed).
+    Calls DDG for every vendor to enrich context before classifying."""
     import httpx
     results = []
+
+    # Deduplicate DDG lookups by vendor name
+    vendor_context: dict = {}
+
     async with httpx.AsyncClient(timeout=8.0) as hc:
+        # Step 1: look up every unique vendor on DuckDuckGo
+        for c in combos:
+            vendor = c["Vendor"]
+            if vendor in vendor_context:
+                continue
+            try:
+                query = quote_plus(f"{vendor} company business type")
+                resp = await hc.get(
+                    f"https://api.duckduckgo.com/?q={query}&format=json&no_html=1&skip_disambig=1",
+                    headers={"User-Agent": "Mozilla/5.0"},
+                )
+                data = resp.json()
+                ctx = (
+                    data.get("AbstractText", "") or
+                    data.get("Answer", "") or
+                    " ".join(
+                        t.get("Text", "") for t in data.get("RelatedTopics", [])[:3]
+                        if isinstance(t, dict)
+                    )
+                )[:500]
+                vendor_context[vendor] = ctx
+            except Exception:
+                vendor_context[vendor] = ""
+
+        # Step 2: classify each combo using memo + vendor DDG context
         for c in combos:
             vendor   = c["Vendor"]
             memo     = c["Memo"] or ""
             category = c["Category"]
+            ctx      = vendor_context.get(vendor, "")
 
-            # Rule-based first
-            rule = _rule_classify(memo, vendor, category)
+            # Rule classify with enriched context
+            enriched_text = f"{memo} {ctx}".strip() if ctx else memo
+            rule = _rule_classify(enriched_text, vendor, category)
 
-            # If low confidence, try DuckDuckGo for the vendor name
-            ddg_context = ""
-            if rule["confidence"] == "low" or not memo or memo == "—":
-                try:
-                    query = quote_plus(f"{vendor} type of business")
-                    resp = await hc.get(
-                        f"https://api.duckduckgo.com/?q={query}&format=json&no_html=1&skip_disambig=1",
-                        headers={"User-Agent": "Mozilla/5.0"},
-                    )
-                    data = resp.json()
-                    ddg_context = (
-                        data.get("AbstractText", "") or
-                        data.get("Answer", "") or
-                        " ".join(
-                            t.get("Text", "") for t in data.get("RelatedTopics", [])[:2]
-                            if isinstance(t, dict)
-                        )
-                    )[:400]
-                except Exception:
-                    ddg_context = ""
-
-            # Re-classify with DDG context if we got something
-            if ddg_context:
-                enriched = _rule_classify(f"{memo} {ddg_context}", vendor, category)
-                if enriched["confidence"] != "low":
-                    enriched["reason"] += " (verified via web search)"
-                    enriched["source"] = "duckduckgo+rules"
-                    results.append({
-                        "vendor":             vendor,
-                        "memo":               memo or "—",
-                        "assigned_category":  category,
-                        "suggested_category": enriched["suggested_category"],
-                        "match":              enriched["match"],
-                        "confidence":         enriched["confidence"],
-                        "reason":             enriched["reason"],
-                        "source":             enriched["source"],
-                    })
-                    continue
+            source = "duckduckgo+rules" if ctx else "rule-based"
+            if ctx and rule["confidence"] != "low":
+                rule["reason"] += " (web-verified)"
 
             results.append({
                 "vendor":             vendor,
@@ -700,9 +826,11 @@ async def _ddg_reconcile(combos: list) -> list:
                 "match":              rule["match"],
                 "confidence":         rule["confidence"],
                 "reason":             rule["reason"],
-                "source":             rule["source"],
+                "source":             source,
             })
+
     return results
+
 
 
 async def _ai_reconcile(combos: list, api_key: str) -> list:
