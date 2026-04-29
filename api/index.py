@@ -7,7 +7,33 @@ from typing import Optional
 from urllib.parse import quote_plus
 
 app = FastAPI()
-_processed_data: Optional[pd.DataFrame] = None   # columns: Date, Vendor, Memo, Amount, Category, TxType, Month
+_processed_data: Optional[pd.DataFrame] = None
+_DATA_PATH = "/tmp/vendorlens_data.pkl"
+
+
+def _save_data(df: pd.DataFrame):
+    """Persist dataframe to /tmp so all Vercel function instances can read it."""
+    global _processed_data
+    _processed_data = df
+    try:
+        df.to_pickle(_DATA_PATH)
+    except Exception:
+        pass
+
+
+def _load_data() -> Optional[pd.DataFrame]:
+    """Return in-memory df if available, else reload from /tmp."""
+    global _processed_data
+    if _processed_data is not None:
+        return _processed_data
+    try:
+        import os
+        if os.path.exists(_DATA_PATH):
+            _processed_data = pd.read_pickle(_DATA_PATH)
+            return _processed_data
+    except Exception:
+        pass
+    return None
 
 # ── Transaction type sets ─────────────────────────────────────────────────────
 EXPENSE_TX_TYPES = {
@@ -427,7 +453,6 @@ def api_health():
 
 @app.post("/api/upload")
 async def upload_file(file: UploadFile = File(...)):
-    global _processed_data
     if not file.filename.endswith((".csv", ".xlsx", ".xls")):
         raise HTTPException(status_code=400, detail="Only CSV or Excel files are supported.")
     contents = await file.read()
@@ -455,7 +480,7 @@ async def upload_file(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Could not parse file: {str(e)}")
 
-    _processed_data = df
+    _save_data(df)
     return {
         "file_format":   fmt,
         "rows":          len(df),
@@ -469,9 +494,10 @@ async def upload_file(file: UploadFile = File(...)):
 
 @app.get("/api/summary")
 def get_summary(vendor: Optional[str] = None, start_date: Optional[str] = None, end_date: Optional[str] = None):
-    if _processed_data is None:
+    _df = _load_data()
+    if _df is None:
         raise HTTPException(status_code=404, detail="No data uploaded.")
-    df = _apply_filters(_processed_data, vendor, start_date, end_date)
+    df = _apply_filters(_df, vendor, start_date, end_date)
     if df.empty:
         return {"total_spend": 0, "vendor_count": 0, "transaction_count": 0,
                 "avg_transaction": 0, "top_category": None, "top_vendor": None,
@@ -493,9 +519,10 @@ def get_summary(vendor: Optional[str] = None, start_date: Optional[str] = None, 
 
 @app.get("/api/vendors")
 def get_vendors(start_date: Optional[str] = None, end_date: Optional[str] = None):
-    if _processed_data is None:
+    _df = _load_data()
+    if _df is None:
         raise HTTPException(status_code=404, detail="No data uploaded.")
-    df = _apply_filters(_processed_data, None, start_date, end_date)
+    df = _apply_filters(_df, None, start_date, end_date)
     total = float(df["Amount"].sum()) or 1
     vendors = []
     for v, grp in df.groupby("Vendor"):
@@ -516,9 +543,10 @@ def get_vendors(start_date: Optional[str] = None, end_date: Optional[str] = None
 
 @app.get("/api/categories")
 def get_categories(vendor: Optional[str] = None, start_date: Optional[str] = None, end_date: Optional[str] = None):
-    if _processed_data is None:
+    _df = _load_data()
+    if _df is None:
         raise HTTPException(status_code=404, detail="No data uploaded.")
-    df = _apply_filters(_processed_data, vendor, start_date, end_date)
+    df = _apply_filters(_df, vendor, start_date, end_date)
     total = float(df["Amount"].sum()) or 1
     cats = df.groupby("Category")["Amount"].agg(["sum", "count"]).reset_index()
     cats.columns = ["category", "amount", "count"]
@@ -529,9 +557,10 @@ def get_categories(vendor: Optional[str] = None, start_date: Optional[str] = Non
 
 @app.get("/api/trend")
 def get_trend(vendor: Optional[str] = None):
-    if _processed_data is None:
+    _df = _load_data()
+    if _df is None:
         raise HTTPException(status_code=404, detail="No data uploaded.")
-    df = _apply_filters(_processed_data, vendor, None, None)
+    df = _apply_filters(_df, vendor, None, None)
     monthly = df.groupby("Month")["Amount"].agg(["sum", "count"]).reset_index()
     monthly.columns = ["month", "spend", "transactions"]
     monthly["spend"] = monthly["spend"].round(2)
@@ -548,9 +577,10 @@ def get_transactions(
     page:       int = 0,
     page_size:  int = 50,
 ):
-    if _processed_data is None:
+    _df = _load_data()
+    if _df is None:
         raise HTTPException(status_code=404, detail="No data uploaded.")
-    df = _apply_filters(_processed_data, vendor, start_date, end_date)
+    df = _apply_filters(_df, vendor, start_date, end_date)
     if category and category != "All":
         df = df[df["Category"] == category]
     if search:
@@ -578,8 +608,9 @@ def get_transactions(
 
 @app.post("/api/reconcile")
 async def reconcile(payload: dict):
+    _processed_data = _load_data()
     if _processed_data is None:
-        raise HTTPException(status_code=404, detail="No data uploaded.")
+        raise HTTPException(status_code=404, detail="No data uploaded. Please upload a file first.")
     vendor_filter = payload.get("vendor")
     df = _apply_filters(_processed_data, vendor_filter, None, None)
     if df.empty:
