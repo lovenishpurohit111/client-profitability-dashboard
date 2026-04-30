@@ -769,52 +769,123 @@ async def reconcile(payload: dict):
     }
 
 
+def _strip_location(name: str) -> str:
+    """Remove trailing (City) from vendor name e.g. 'Burdell (Oakland)' → 'Burdell'."""
+    return re.sub(r'\s*\([^)]{2,30}\)\s*$', '', name).strip()
+
+
+def _infer_from_name(vendor: str) -> str:
+    """Infer business type from vendor name patterns alone."""
+    v = vendor.lower()
+    has_city = bool(re.search(r'\([A-Z][a-z]+\)$', vendor))
+
+    if any(s in v for s in ["grill", "bbq", "burger", "pizza", "sushi", "café",
+                             "cafe", "bistro", "kitchen", "diner", "eatery",
+                             "restaurant", "tavern", "bar & grill", "steakhouse",
+                             "taqueria", "noodle", "seafood", "chophouse",
+                             "bakery", "brewery", "winery", "pub "]):
+        return "restaurant"
+    if any(s in v for s in ["hotel", " inn", "suites", "resort", "lodge", "motel"]):
+        return "hotel"
+    if any(s in v for s in ["bank", "credit union", "financial", "capital one",
+                             "chase", "wells fargo", "citibank", "td bank"]):
+        return "bank"
+    if any(s in v for s in ["shell", "chevron", " bp ", "exxon", "mobil", "arco",
+                             "76 gas", "valero", "speedway", "sunoco"]):
+        return "gas_station"
+    if has_city:
+        return "local_business"
+    return ""
+
+
+TYPE_TO_CATEGORY = {
+    "restaurant":   "Meals & Entertainment",
+    "hotel":        "Travel & Transportation",
+    "bank":         "Bank & Finance Charges",
+    "gas_station":  "Travel & Transportation",
+}
+
+
 async def _ddg_reconcile(combos: list) -> list:
-    """DuckDuckGo + rule-based category verification (no API key needed).
-    Calls DDG for every vendor to enrich context before classifying."""
+    """DuckDuckGo + heuristic category verification.
+    Uses multiple strategies to handle local businesses like 'Burdell (Oakland)'."""
     import httpx
     results = []
+    vendor_context: dict = {}  # vendor → (description, inferred_type)
 
-    # Deduplicate DDG lookups by vendor name
-    vendor_context: dict = {}
+    async def _ddg_lookup(hc, query: str) -> str:
+        try:
+            resp = await hc.get(
+                f"https://api.duckduckgo.com/?q={quote_plus(query)}&format=json&no_html=1&skip_disambig=1",
+                headers={"User-Agent": "Mozilla/5.0"},
+                timeout=6.0,
+            )
+            data = resp.json()
+            return (
+                data.get("AbstractText", "") or
+                data.get("Answer", "") or
+                " ".join(t.get("Text", "") for t in data.get("RelatedTopics", [])[:3]
+                         if isinstance(t, dict))
+            )[:500]
+        except Exception:
+            return ""
 
-    async with httpx.AsyncClient(timeout=8.0) as hc:
-        # Step 1: look up every unique vendor on DuckDuckGo
+    # Map inferred type → category (uses module-level TYPE_TO_CATEGORY)
+    async with httpx.AsyncClient(timeout=10.0) as hc:
+        # Step 1: look up each unique vendor with multiple query strategies
         for c in combos:
             vendor = c["Vendor"]
             if vendor in vendor_context:
                 continue
-            try:
-                query = quote_plus(f"{vendor} company business type")
-                resp = await hc.get(
-                    f"https://api.duckduckgo.com/?q={query}&format=json&no_html=1&skip_disambig=1",
-                    headers={"User-Agent": "Mozilla/5.0"},
-                )
-                data = resp.json()
-                ctx = (
-                    data.get("AbstractText", "") or
-                    data.get("Answer", "") or
-                    " ".join(
-                        t.get("Text", "") for t in data.get("RelatedTopics", [])[:3]
-                        if isinstance(t, dict)
-                    )
-                )[:500]
-                vendor_context[vendor] = ctx
-            except Exception:
-                vendor_context[vendor] = ""
 
-        # Step 2: classify each combo using memo + vendor DDG context
+            clean_name = _strip_location(vendor)
+            inferred   = _infer_from_name(vendor)
+
+            # Try 3 query strategies in order, stop when we get a result
+            ctx = ""
+            for query in [
+                f"{clean_name} restaurant food",        # helps local restaurants
+                f"{clean_name} business",               # generic fallback
+                f"{vendor}",                            # raw name
+            ]:
+                ctx = await _ddg_lookup(hc, query)
+                if ctx and len(ctx) > 30:
+                    break
+
+            vendor_context[vendor] = (ctx, inferred)
+
+        # Step 2: classify each combo
         for c in combos:
             vendor   = c["Vendor"]
             memo     = c["Memo"] or ""
             category = c["Category"]
-            ctx      = vendor_context.get(vendor, "")
+            ctx, inferred = vendor_context.get(vendor, ("", ""))
 
-            # Rule classify with enriched context
-            enriched_text = f"{memo} {ctx}".strip() if ctx else memo
-            rule = _rule_classify(enriched_text, vendor, category)
+            # Build enriched text: memo + web context
+            enriched = f"{memo} {ctx}".strip() if ctx else memo
+            rule = _rule_classify(enriched, vendor, category)
 
-            source = "duckduckgo+rules" if ctx else "rule-based"
+            # If still low confidence, use name-based heuristic
+            if rule["confidence"] == "low" and inferred:
+                cat = TYPE_TO_CATEGORY.get(inferred)
+                if not cat and inferred == "local_business":
+                    # Local business with city suffix — guess Meals & Entertainment
+                    # as most local business transactions on expense reports are meals
+                    cat = "Meals & Entertainment"
+                if cat:
+                    assigned_standard = _normalise_category(category)
+                    match = _canon(cat) == _canon(assigned_standard)
+                    rule = {
+                        "suggested_category": cat,
+                        "match":              match,
+                        "confidence":         "medium",
+                        "reason":             f"Vendor name pattern suggests '{cat}' (local business heuristic)"
+                                              if not match
+                                              else f"Vendor name pattern confirms '{cat}'",
+                        "source":             "name-heuristic",
+                    }
+
+            source = "duckduckgo+rules" if ctx else ("name-heuristic" if inferred else "rule-based")
             if ctx and rule["confidence"] != "low":
                 rule["reason"] += " (web-verified)"
 
@@ -830,6 +901,7 @@ async def _ddg_reconcile(combos: list) -> list:
             })
 
     return results
+
 
 
 
