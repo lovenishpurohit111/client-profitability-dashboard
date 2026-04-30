@@ -8,28 +8,37 @@ from urllib.parse import quote_plus
 
 app = FastAPI()
 _processed_data: Optional[pd.DataFrame] = None
-_DATA_PATH = "/tmp/vendorlens_data.pkl"
+_current_session: Optional[str] = None
 
 
-def _save_data(df: pd.DataFrame):
-    """Persist dataframe to /tmp so all Vercel function instances can read it."""
-    global _processed_data
-    _processed_data = df
+def _session_path(session_id: str) -> str:
+    # Sanitise session_id to safe filename chars only
+    safe = re.sub(r'[^a-zA-Z0-9_-]', '', session_id)[:40]
+    return f"/tmp/vendorlens_{safe}.pkl"
+
+
+def _save_data(df: pd.DataFrame, session_id: str):
+    """Persist dataframe to a session-specific /tmp file."""
+    global _processed_data, _current_session
+    _processed_data   = df
+    _current_session  = session_id
     try:
-        df.to_pickle(_DATA_PATH)
+        df.to_pickle(_session_path(session_id))
     except Exception:
         pass
 
 
-def _load_data() -> Optional[pd.DataFrame]:
-    """Return in-memory df if available, else reload from /tmp."""
-    global _processed_data
-    if _processed_data is not None:
+def _load_data(session_id: str) -> Optional[pd.DataFrame]:
+    """Return df for this session — in-memory if same session, else read from /tmp."""
+    global _processed_data, _current_session
+    if _processed_data is not None and _current_session == session_id:
         return _processed_data
+    # Different instance or different session — load from /tmp
     try:
-        import os
-        if os.path.exists(_DATA_PATH):
-            _processed_data = pd.read_pickle(_DATA_PATH)
+        path = _session_path(session_id)
+        if os.path.exists(path):
+            _processed_data  = pd.read_pickle(path)
+            _current_session = session_id
             return _processed_data
     except Exception:
         pass
@@ -606,8 +615,11 @@ async def upload_file(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Could not parse file: {str(e)}")
 
-    _save_data(df)
+    import uuid, os
+    session_id = uuid.uuid4().hex   # unique token per upload
+    _save_data(df, session_id)
     return {
+        "session_id":    session_id,
         "file_format":   fmt,
         "rows":          len(df),
         "vendors":       df["Vendor"].nunique(),
@@ -619,8 +631,8 @@ async def upload_file(file: UploadFile = File(...)):
 
 
 @app.get("/api/summary")
-def get_summary(vendor: Optional[str] = None, start_date: Optional[str] = None, end_date: Optional[str] = None):
-    _df = _load_data()
+def get_summary(session_id: str, vendor: Optional[str] = None, start_date: Optional[str] = None, end_date: Optional[str] = None):
+    _df = _load_data(session_id)
     if _df is None:
         raise HTTPException(status_code=404, detail="No data uploaded.")
     df = _apply_filters(_df, vendor, start_date, end_date)
@@ -644,8 +656,8 @@ def get_summary(vendor: Optional[str] = None, start_date: Optional[str] = None, 
 
 
 @app.get("/api/vendors")
-def get_vendors(start_date: Optional[str] = None, end_date: Optional[str] = None):
-    _df = _load_data()
+def get_vendors(session_id: str, start_date: Optional[str] = None, end_date: Optional[str] = None):
+    _df = _load_data(session_id)
     if _df is None:
         raise HTTPException(status_code=404, detail="No data uploaded.")
     df = _apply_filters(_df, None, start_date, end_date)
@@ -668,8 +680,8 @@ def get_vendors(start_date: Optional[str] = None, end_date: Optional[str] = None
 
 
 @app.get("/api/categories")
-def get_categories(vendor: Optional[str] = None, start_date: Optional[str] = None, end_date: Optional[str] = None):
-    _df = _load_data()
+def get_categories(session_id: str, vendor: Optional[str] = None, start_date: Optional[str] = None, end_date: Optional[str] = None):
+    _df = _load_data(session_id)
     if _df is None:
         raise HTTPException(status_code=404, detail="No data uploaded.")
     df = _apply_filters(_df, vendor, start_date, end_date)
@@ -682,8 +694,8 @@ def get_categories(vendor: Optional[str] = None, start_date: Optional[str] = Non
 
 
 @app.get("/api/trend")
-def get_trend(vendor: Optional[str] = None):
-    _df = _load_data()
+def get_trend(session_id: str, vendor: Optional[str] = None):
+    _df = _load_data(session_id)
     if _df is None:
         raise HTTPException(status_code=404, detail="No data uploaded.")
     df = _apply_filters(_df, vendor, None, None)
@@ -702,8 +714,9 @@ def get_transactions(
     search:     Optional[str] = None,
     page:       int = 0,
     page_size:  int = 50,
+    session_id: str = "",
 ):
-    _df = _load_data()
+    _df = _load_data(session_id)
     if _df is None:
         raise HTTPException(status_code=404, detail="No data uploaded.")
     df = _apply_filters(_df, vendor, start_date, end_date)
@@ -734,7 +747,8 @@ def get_transactions(
 
 @app.post("/api/reconcile")
 async def reconcile(payload: dict):
-    _processed_data = _load_data()
+    session_id = payload.get("session_id", "")
+    _processed_data = _load_data(session_id)
     if _processed_data is None:
         raise HTTPException(status_code=404, detail="No data uploaded. Please upload a file first.")
     vendor_filter = payload.get("vendor")

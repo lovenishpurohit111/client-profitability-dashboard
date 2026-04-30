@@ -4,7 +4,7 @@ import API from '../config';
 
 const fmt = (n) => new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:2}).format(n);
 
-export default function TransactionLog({ vendor, categories }) {
+export default function TransactionLog({ vendor, categories, sessionId }) {
   const [txns,     setTxns]     = useState([]);
   const [total,    setTotal]    = useState(0);
   const [pages,    setPages]    = useState(1);
@@ -16,7 +16,7 @@ export default function TransactionLog({ vendor, categories }) {
   const fetchTxns = useCallback(async () => {
     setLoading(true);
     try {
-      const params = { page, page_size: 50 };
+      const params = { page, page_size: 50, session_id: sessionId || '' };
       if (vendor && vendor !== 'All') params.vendor = vendor;
       if (catFilter !== 'All') params.category = catFilter;
       if (search) params.search = search;

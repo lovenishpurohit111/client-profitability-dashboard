@@ -24,7 +24,7 @@ export default function Dashboard({ meta, onReset }) {
   const fetchAll = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const params = {};
+    const params = { session_id: meta?.session_id || '' };
     if (startDate) params.start_date = startDate;
     if (endDate)   params.end_date   = endDate;
     if (vendor)    params.vendor     = vendor;
@@ -33,7 +33,7 @@ export default function Dashboard({ meta, onReset }) {
         axios.get(`${API}/summary`,    { params }),
         axios.get(`${API}/vendors`,    { params }),
         axios.get(`${API}/categories`, { params }),
-        axios.get(`${API}/trend`,      { params: vendor ? { vendor } : {} }),
+        axios.get(`${API}/trend`,      { params: vendor ? { session_id: meta?.session_id, vendor } : { session_id: meta?.session_id } }),
       ]);
       if (sumRes.status  === 'fulfilled') setSummary(sumRes.value.data);
       if (vendRes.status === 'fulfilled') setVendors(vendRes.value.data.vendors || []);
@@ -157,13 +157,13 @@ export default function Dashboard({ meta, onReset }) {
           </div>
 
           {/* Reconciliation — centerpiece */}
-          <ReconcilePanel vendor={vendor} vendors={meta?.vendor_list || []}/>
+          <ReconcilePanel vendor={vendor} vendors={meta?.vendor_list || []} sessionId={meta?.session_id}/>
 
           {/* Vendor table */}
           <VendorTable vendors={vendors} onSelectVendor={handleSelectVendor} selectedVendor={vendor}/>
 
           {/* Transaction log */}
-          <TransactionLog vendor={vendor} categories={meta?.category_list || []}/>
+          <TransactionLog vendor={vendor} categories={meta?.category_list || []} sessionId={meta?.session_id}/>
 
         </div>
       )}

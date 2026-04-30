@@ -4,7 +4,7 @@ import API from '../config';
 
 const CONF_COLOR = { high:'#34d399', medium:'#fbbf24', low:'#64748b' };
 
-export default function ReconcilePanel({ vendor, vendors }) {
+export default function ReconcilePanel({ vendor, vendors, sessionId }) {
   const [results,   setResults]   = useState(null);
   const [summary,   setSummary]   = useState(null);
   const [loading,   setLoading]   = useState(false);
@@ -19,6 +19,7 @@ export default function ReconcilePanel({ vendor, vendors }) {
     try {
       const res = await axios.post(`${API}/reconcile`, {
         vendor: selectedVendor !== 'All' ? selectedVendor : undefined,
+        session_id: sessionId || '',
       });
       setResults(res.data.results);
       setSummary(res.data.summary);
