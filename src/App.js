@@ -3,11 +3,7 @@ import UploadPage from './components/UploadPage';
 import Dashboard from './components/Dashboard';
 
 export default function App() {
-  const [page, setPage]       = useState('upload');
-  const [meta, setMeta]       = useState(null);
-
-  const handleUploadSuccess = (m) => { setMeta(m); setPage('dashboard'); };
-  const handleReset         = () => { setMeta(null); setPage('upload'); };
+  const [data, setData] = useState(null);  // entire upload response stored here
 
   return (
     <div className="noise-bg min-h-screen"
@@ -19,9 +15,9 @@ export default function App() {
         background:'radial-gradient(circle,rgba(129,140,248,0.04) 0%,transparent 70%)',
         pointerEvents:'none',zIndex:0 }}/>
       <div className="content-layer">
-        {page === 'upload'
-          ? <UploadPage onUploadSuccess={handleUploadSuccess}/>
-          : <Dashboard meta={meta} onReset={handleReset}/>}
+        {data
+          ? <Dashboard data={data} onReset={() => setData(null)} />
+          : <UploadPage onUploadSuccess={setData} />}
       </div>
     </div>
   );
