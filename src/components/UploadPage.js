@@ -72,7 +72,7 @@ function downloadCSV() {
   URL.revokeObjectURL(url);
 }
 
-export default function UploadPage({ onUploadSuccess }) {
+export default function UploadPage({ onUploadSuccess, uploadError }) {
   const [dragging,  setDragging]  = useState(false);
   const [file,      setFile]      = useState(null);
   const [uploading, setUploading] = useState(false);
@@ -99,7 +99,7 @@ export default function UploadPage({ onUploadSuccess }) {
         headers: { 'Content-Type': 'multipart/form-data' },
         onUploadProgress: (e) => setProgress(Math.round((e.loaded / e.total) * 100)),
       });
-      onUploadSuccess({ ...res.data, session_id: res.data.session_id });
+      onUploadSuccess(res.data);
     } catch (err) {
       const msg = err.response?.data?.detail || 'Upload failed. Please try again.';
       setError(typeof msg === 'string' ? msg : JSON.stringify(msg));

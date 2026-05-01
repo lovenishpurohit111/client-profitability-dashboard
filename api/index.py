@@ -598,14 +598,14 @@ async def upload_file(file: UploadFile = File(...)):
     computed = _compute_all(df)
 
     return {
-        "file_format":   fmt,
-        "rows":          len(df),
-        "vendors":       df["Vendor"].nunique(),
-        "total_spend":   round(float(df["Amount"].sum()), 2),
-        "date_range":    {"min": df["Date"].min().strftime("%Y-%m-%d"),
-                          "max": df["Date"].max().strftime("%Y-%m-%d")},
-        "vendor_list":   sorted(df["Vendor"].unique().tolist()),
-        "category_list": sorted(df["Category"].unique().tolist()),
+        "file_format":    fmt,
+        "rows":           len(df),
+        "vendor_count":   int(df["Vendor"].nunique()),
+        "total_spend":    round(float(df["Amount"].sum()), 2),
+        "date_range":     {"min": df["Date"].min().strftime("%Y-%m-%d"),
+                           "max": df["Date"].max().strftime("%Y-%m-%d")},
+        "vendor_list":    sorted(df["Vendor"].unique().tolist()),
+        "category_list":  sorted(df["Category"].unique().tolist()),
         **computed,
     }
 

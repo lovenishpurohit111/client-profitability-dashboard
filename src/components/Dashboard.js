@@ -101,7 +101,7 @@ export default function Dashboard({ data, onReset }) {
               VendorLens
             </div>
             <div className="text-slate-500 text-xs font-mono">
-              {data.rows} transactions · {data.vendors} vendors
+              {data.rows} transactions · {data.vendor_count} vendors
               {data.file_format === 'quickbooks-vendor' &&
                 <span style={{ color:'#38bdf8' }}> · QuickBooks ✓</span>}
             </div>
