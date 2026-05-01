@@ -7,7 +7,9 @@ import TransactionLog from './TransactionLog';
 import ReconcilePanel from './ReconcilePanel';
 
 function applyFilters(data, vendor, startDate, endDate) {
-  let txns       = data.transactions || [];
+  if (!data) return { summary:{}, vendors:[], categories:[], trend:[], txns:[] };
+
+  let txns       = (data.transactions || []).map(t => ({...t}));
   let vendors    = data.vendors      || [];
   let categories = data.categories   || [];
   let trend      = data.trend        || [];
@@ -79,13 +81,31 @@ export default function Dashboard({ data, onReset }) {
   const [startDate, setStartDate] = useState('');
   const [endDate,   setEndDate]   = useState('');
 
-  const filtered = useMemo(
-    () => applyFilters(data, vendor, startDate, endDate),
-    [data, vendor, startDate, endDate]
-  );
+  // Log data shape on mount to help debug
+  React.useEffect(() => {
+    console.log('[Dashboard] data keys:', Object.keys(data || {}));
+    console.log('[Dashboard] transactions:', (data?.transactions||[]).length);
+    console.log('[Dashboard] vendors:', (data?.vendors||[]).length);
+    console.log('[Dashboard] combos:', (data?.combos||[]).length);
+  }, [data]);
+
+  const filtered = useMemo(() => {
+    try {
+      return applyFilters(data, vendor, startDate, endDate);
+    } catch(e) {
+      console.error('[Dashboard] applyFilters crash:', e);
+      return {
+        summary: { total_spend:0, vendor_count:0, transaction_count:0,
+                   avg_transaction:0, top_vendor:null, top_category:null, monthly_avg:0 },
+        vendors: [], categories: [], trend: [], txns: [],
+      };
+    }
+  }, [data, vendor, startDate, endDate]);
 
   const fmtC = n => new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',
-    maximumFractionDigits:0,notation:'compact'}).format(n);
+    maximumFractionDigits:0,notation:'compact'}).format(n || 0);
+
+  if (!data) return null;
 
   return (
     <div className="min-h-screen px-4 py-6 max-w-7xl mx-auto">
