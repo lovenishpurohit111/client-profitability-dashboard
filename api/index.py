@@ -658,11 +658,18 @@ async def reconcile(payload: dict):
     if not combos:
         return {"results": [], "summary": {"total": 0, "match": 0, "mismatch": 0, "uncertain": 0}}
 
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-    if api_key:
-        results = await _ai_reconcile(combos, api_key)
+    anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    gemini_key    = os.environ.get("GEMINI_API_KEY", "")
+
+    if gemini_key:
+        results = await _gemini_reconcile(combos, gemini_key)
+        source  = "gemini+google-search"
+    elif anthropic_key:
+        results = await _ai_reconcile(combos, anthropic_key)
+        source  = "claude+web"
     else:
         results = await _ddg_reconcile(combos)
+        source  = "duckduckgo+rules"
 
     match_count    = sum(1 for r in results if r["match"] and r["confidence"] != "low")
     mismatch_count = sum(1 for r in results if not r["match"])
@@ -676,7 +683,7 @@ async def reconcile(payload: dict):
             "total":    total, "match": match_count,
             "mismatch": mismatch_count, "uncertain": uncertain,
             "accuracy": accuracy,
-            "source":   "claude+web" if api_key else "duckduckgo+rules",
+            "source":   source,
         },
     }
 
@@ -743,6 +750,93 @@ async def _ddg_reconcile(combos: list) -> list:
                 "reason":             rule["reason"],
                 "source":             source,
             })
+    return results
+
+
+async def _gemini_reconcile(combos: list, api_key: str) -> list:
+    """Use Gemini with Google Search grounding for category verification.
+    This gives real Google Search results — the most accurate option."""
+    import httpx
+
+    results = []
+    # Process in batches of 10 to stay within token limits
+    BATCH = 10
+    for batch_start in range(0, len(combos), BATCH):
+        batch = combos[batch_start:batch_start + BATCH]
+        lines = "\n".join(
+            f"{i+1}. Vendor: \"{c['Vendor']}\" | Memo: \"{c['Memo'] or '—'}\" | Assigned: \"{c['Category']}\""
+            for i, c in enumerate(batch)
+        )
+        prompt = f"""You are an expert accounting reconciliation assistant.
+For each vendor transaction below, search Google to understand what the vendor does, then:
+1. Determine the correct accounting expense category
+2. Check if the assigned Split category is correct
+3. Flag any mismatches with a clear reason
+
+Use these standard categories:
+Meals & Entertainment, Travel & Transportation, Software & Subscriptions,
+Cloud & Hosting, Advertising & Marketing, Office Supplies & Equipment,
+Utilities, Legal & Professional Fees, Insurance, Rent & Facilities,
+Payroll & Contractors, Materials & Inventory, Repairs & Maintenance,
+Bank & Finance Charges, Miscellaneous
+
+Transactions to review:
+{lines}
+
+Respond ONLY as a JSON array with no markdown, one object per transaction in order:
+[{{"vendor":"...","memo":"...","assigned_category":"...","suggested_category":"...","match":true/false,"confidence":"high/medium/low","reason":"one concise sentence"}}]"""
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as hc:
+                resp = await hc.post(
+                    f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}",
+                    json={
+                        "contents": [{"parts": [{"text": prompt}]}],
+                        "tools": [{"google_search": {}}],   # Google Search grounding
+                        "generationConfig": {
+                            "temperature": 0.1,
+                            "maxOutputTokens": 2048,
+                        },
+                    },
+                    headers={"Content-Type": "application/json"},
+                )
+
+            if resp.status_code != 200:
+                raise Exception(f"Gemini API error {resp.status_code}: {resp.text[:200]}")
+
+            data = resp.json()
+            # Extract text from Gemini response
+            text = ""
+            for candidate in data.get("candidates", []):
+                for part in candidate.get("content", {}).get("parts", []):
+                    if "text" in part:
+                        text += part["text"]
+
+            # Parse JSON array from response
+            m = re.search(r"\[.*?\]", text, re.DOTALL)
+            if not m:
+                raise Exception("No JSON array in Gemini response")
+
+            batch_results = json.loads(m.group())
+            for r in batch_results:
+                r.setdefault("source", "gemini+google-search")
+            results.extend(batch_results)
+
+        except Exception as e:
+            # Fallback: classify this batch with rules
+            for c in batch:
+                rule = _rule_classify(c.get("Memo",""), c.get("Vendor",""), c.get("Category",""))
+                results.append({
+                    "vendor":             c["Vendor"],
+                    "memo":               c.get("Memo") or "—",
+                    "assigned_category":  c["Category"],
+                    "suggested_category": rule["suggested_category"],
+                    "match":              rule["match"],
+                    "confidence":         rule["confidence"],
+                    "reason":             rule["reason"] + " (Gemini fallback: rule-based)",
+                    "source":             "rule-based",
+                })
+
     return results
 
 

@@ -69,7 +69,7 @@ export default function ReconcilePanel({ combos, vendors, activeVendor }) {
               </h3>
               <p className="text-slate-500 text-xs font-mono mt-0.5">
                 {summary
-                  ? `${summary.total} combos checked · ${summary.source === 'claude+web' ? 'Claude AI + web search' : 'DuckDuckGo + smart rules'}`
+                  ? `${summary.total} combos checked · ${summary.source === 'gemini+google-search' ? '✦ Gemini + Google Search' : summary.source === 'claude+web' ? '✦ Claude AI + web search' : 'DuckDuckGo + smart rules'}`
                   : 'Verify each transaction\'s Split category against vendor + memo via web search'}
               </p>
             </div>
@@ -261,9 +261,12 @@ export default function ReconcilePanel({ combos, vendors, activeVendor }) {
 
           <div style={{ padding:'12px 24px 20px',borderTop:'1px solid rgba(30,41,59,0.5)' }}>
             <p style={{ fontSize:11,color:'#475569' }}>
-              💡 {summary?.source==='claude+web'
-                ? 'Verified using Claude AI + real-time web search.'
-                : 'Verified using DuckDuckGo + keyword classification. Set ANTHROPIC_API_KEY for higher accuracy.'}
+              💡{' '}
+              {summary?.source === 'gemini+google-search'
+                ? '✦ Verified with Gemini AI + real Google Search — highest accuracy.'
+                : summary?.source === 'claude+web'
+                ? '✦ Verified with Claude AI + web search.'
+                : <span>DuckDuckGo + keyword classification. Add <span style={{color:'#a78bfa',fontFamily:'JetBrains Mono'}}>GEMINI_API_KEY</span> to Vercel env vars for Google Search accuracy.</span>}
             </p>
           </div>
         </div>
