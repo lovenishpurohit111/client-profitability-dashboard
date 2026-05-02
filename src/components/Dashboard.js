@@ -81,13 +81,6 @@ export default function Dashboard({ data, onReset }) {
   const [startDate, setStartDate] = useState('');
   const [endDate,   setEndDate]   = useState('');
 
-  // Log data shape on mount to help debug
-  React.useEffect(() => {
-    console.log('[Dashboard] data keys:', Object.keys(data || {}));
-    console.log('[Dashboard] transactions:', (data?.transactions||[]).length);
-    console.log('[Dashboard] vendors:', (data?.vendors||[]).length);
-    console.log('[Dashboard] combos:', (data?.combos||[]).length);
-  }, [data]);
 
   const filtered = useMemo(() => {
     try {
