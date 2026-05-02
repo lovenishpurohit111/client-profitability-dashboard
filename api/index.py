@@ -98,6 +98,8 @@ QB_PREFIX_MAP = [
 
 
 def _normalise_category(cat: str) -> str:
+    if not cat or str(cat).strip().lower() in ("", "nan", "none", "-", "—"):
+        return "Uncategorised"
     low = cat.strip().lower()
     if low in QB_TO_STANDARD:
         return QB_TO_STANDARD[low]
@@ -187,7 +189,26 @@ def _parse_quickbooks_vendor_xlsx(raw_bytes: bytes) -> pd.DataFrame:
     if not rows:
         raise ValueError("No transaction rows found.")
     df = pd.DataFrame(rows)
-    df["Date"]     = pd.to_datetime(df["Date"], errors="coerce")
+    def _parse_date_col(s):
+        # Try standard parsing first
+        parsed = pd.to_datetime(s, errors="coerce", dayfirst=False)
+        # For cells that still failed, try Excel serial number format
+        mask = parsed.isna()
+        if mask.any():
+            try:
+                serial = pd.to_numeric(s[mask], errors="coerce")
+                valid_serial = serial.notna() & (serial > 1000) & (serial < 100000)
+                if valid_serial.any():
+                    excel_dates = pd.to_datetime(
+                        serial[valid_serial], unit="D", origin="1899-12-30", errors="coerce"
+                    )
+                    parsed = parsed.copy()
+                    parsed[mask & valid_serial] = excel_dates
+            except Exception:
+                pass
+        return parsed
+
+    df["Date"]     = _parse_date_col(df["Date"])
     df             = df.dropna(subset=["Date"])
     df["Amount"]   = _clean_amount(df["Amount"]).abs()
     df["Category"] = df["Category"].astype(str).str.strip().apply(_normalise_category)
@@ -343,10 +364,16 @@ def _compute_all(df: pd.DataFrame) -> dict:
             "tx_type":  str(row["TxType"]),
         })
 
-    # Reconciliation combos (vendor+memo+category, deduplicated)
-    combos = (df[["Vendor", "Memo", "Category"]]
-              .drop_duplicates()
-              .to_dict("records"))
+    # Reconciliation combos — one per Vendor+Category pair, best memo chosen
+    _EMPTY_MEMO = {"", "-", "—", "nan", "none"}
+    def _pick_memo(group):
+        good = group["Memo"].astype(str).str.strip()
+        good = good[~good.str.lower().isin(_EMPTY_MEMO)]
+        return good.iloc[0] if len(good) > 0 else ""
+    combo_rows = []
+    for (vendor, category), grp in df.groupby(["Vendor", "Category"]):
+        combo_rows.append({"Vendor": vendor, "Category": category, "Memo": _pick_memo(grp)})
+    combos = combo_rows
 
     return {
         "summary":     summary,
@@ -518,8 +545,11 @@ TYPE_TO_CATEGORY = {
 
 
 def _rule_classify(memo: str, vendor: str, assigned_cat: str) -> dict:
+    _EMPTY = {"", "-", "—", "nan", "none"}
     memo_lower   = (memo or "").lower().strip()
     vendor_lower = (vendor or "").lower().strip()
+    if memo_lower in _EMPTY:   memo_lower = ""
+    if vendor_lower in _EMPTY: vendor_lower = ""
     assigned_standard = _normalise_category(assigned_cat)
 
     # 1. Memo override
@@ -540,23 +570,35 @@ def _rule_classify(memo: str, vendor: str, assigned_cat: str) -> dict:
                               else f"Vendor '{vendor}' → {cat} but assigned '{assigned_standard}'",
                     "source": "rule-based"}
 
-    # 3. Keyword scoring
+    # 3. Keyword scoring - tiered by keyword length for precision
     text = f"{memo_lower} {vendor_lower}"
-    best_cat, best_score = "Miscellaneous", 0
+    best_cat, best_score = None, 0
     for cat, keywords in CATEGORY_RULES.items():
-        score = sum(2 for kw in keywords if len(kw) > 6 and kw in text)
-        score += sum(1 for kw in keywords if 3 < len(kw) <= 6 and kw in text)
+        score = sum(3 for kw in keywords if len(kw) > 8 and kw in text)
+        score += sum(2 for kw in keywords if 5 < len(kw) <= 8 and kw in text)
+        score += sum(1 for kw in keywords if 3 < len(kw) <= 5 and kw in text)
         if score > best_score:
             best_score, best_cat = score, cat
 
     suggested  = best_cat if best_score > 0 else assigned_standard
     confidence = "high" if best_score >= 4 else "medium" if best_score >= 2 else "low"
-    if not memo or memo in ("—", "nan", ""):
+    # No usable memo or vendor = always low confidence, keep assigned
+    if not memo_lower and not vendor_lower:
         confidence = "low"
+        suggested  = assigned_standard
+    # Low confidence but vendor name gives a strong hint — use heuristic
+    elif confidence == "low" and vendor:
+        inferred = _infer_from_name(vendor)
+        hint_cat = TYPE_TO_CATEGORY.get(inferred,
+                   "Meals & Entertainment" if inferred == "local_business" else None)
+        if hint_cat:
+            suggested  = hint_cat
+            confidence = "medium"
 
     match = _canon(suggested) == _canon(assigned_standard)
     return {"suggested_category": suggested, "match": match, "confidence": confidence,
             "reason": f"Keywords match '{suggested}'" if match and best_score > 0
+                      else f"Vendor name suggests '{suggested}'" if confidence == "medium" and not match
                       else f"Expected '{suggested}' but assigned '{assigned_standard}'" if not match
                       else f"No strong match — keeping '{assigned_standard}'",
             "source": "rule-based"}
