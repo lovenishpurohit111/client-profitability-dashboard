@@ -1,4 +1,5 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi.responses import JSONResponse
 import pandas as pd
 import numpy as np
 import io, os, json, re, csv
@@ -636,10 +637,12 @@ async def upload_file(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Could not parse file: {str(e)}")
 
+    import hashlib, time
+
     # Compute everything now — no server state needed
     computed = _compute_all(df)
 
-    return {
+    payload = {
         "file_format":    fmt,
         "rows":           len(df),
         "vendor_count":   int(df["Vendor"].nunique()),
@@ -648,8 +651,20 @@ async def upload_file(file: UploadFile = File(...)):
                            "max": df["Date"].max().strftime("%Y-%m-%d")},
         "vendor_list":    sorted(df["Vendor"].unique().tolist()),
         "category_list":  sorted(df["Category"].unique().tolist()),
+        "uploaded_at":    int(time.time()),          # unique per upload
+        "content_hash":   hashlib.md5(contents).hexdigest(),  # fingerprint of raw file bytes
         **computed,
     }
+
+    # Explicit no-cache headers so Vercel/CDN never serves a stale response
+    return JSONResponse(
+        content=payload,
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma":        "no-cache",
+            "Expires":       "0",
+        },
+    )
 
 
 @app.post("/api/reconcile")

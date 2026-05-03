@@ -96,9 +96,17 @@ export default function UploadPage({ onUploadSuccess, uploadError }) {
     form.append('file', file);
     try {
       const res = await axios.post(`${API}/upload`, form, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+        headers: {
+          'Content-Type': 'multipart/form-data',
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache',
+        },
+        params: { _t: Date.now() },   // cache-bust query param
         onUploadProgress: (e) => setProgress(Math.round((e.loaded / e.total) * 100)),
       });
+      // Reset file input so re-uploading same filename triggers a fresh read
+      if (inputRef.current) inputRef.current.value = '';
+      setFile(null);
       onUploadSuccess(res.data);
     } catch (err) {
       const msg = err.response?.data?.detail || 'Upload failed. Please try again.';

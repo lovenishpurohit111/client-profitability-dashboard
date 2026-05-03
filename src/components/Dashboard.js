@@ -117,6 +117,8 @@ export default function Dashboard({ data, onReset }) {
               {data.rows} transactions · {data.vendor_count} vendors
               {data.file_format === 'quickbooks-vendor' &&
                 <span style={{ color:'#38bdf8' }}> · QuickBooks ✓</span>}
+              {data.content_hash &&
+                <span style={{ color:'#334155' }}> · #{data.content_hash.slice(0,6)}</span>}
             </div>
           </div>
         </div>
