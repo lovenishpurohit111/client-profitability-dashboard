@@ -277,31 +277,94 @@ def _parse_quickbooks_vendor_csv(raw_bytes: bytes) -> pd.DataFrame:
     return df[["Date", "Vendor", "Memo", "Amount", "Category", "TxType", "Month"]]
 
 
+def _read_csv_any_delimiter(raw_bytes: bytes) -> pd.DataFrame:
+    """Try multiple delimiters and pick the one that produces the most valid columns."""
+    text = raw_bytes.decode("utf-8", errors="ignore")
+    for sep in [",", "	", ";", "|"]:
+        try:
+            df = pd.read_csv(io.StringIO(text), sep=sep, dtype=str)
+            if len(df.columns) >= 4:
+                return df
+        except Exception:
+            continue
+    # Last resort: let pandas sniff it
+    return pd.read_csv(io.StringIO(text), sep=None, engine="python", dtype=str)
+
+
 def _parse_standard(df_raw: pd.DataFrame) -> pd.DataFrame:
-    df_raw.columns = [c.strip().title().replace(" ", "_") for c in df_raw.columns]
+    # Drop fully empty rows first
+    df_raw = df_raw.dropna(how="all").reset_index(drop=True)
+    df_raw.columns = [str(c).strip().title().replace(" ", "_") for c in df_raw.columns]
+
     col_map = {}
     for col in df_raw.columns:
         low = col.lower()
-        if "date" in low:                                             col_map["Date"] = col
-        elif "vendor" in low or "payee" in low or "supplier" in low: col_map["Vendor"] = col
-        elif "client" in low or "name" in low:                        col_map.setdefault("Vendor", col)
-        elif "memo" in low or "desc" in low or "note" in low:        col_map["Memo"] = col
-        elif "amount" in low or "value" in low:                       col_map["Amount"] = col
-        elif "split" in low:                                           col_map["Category"] = col
-        elif "cat" in low:                                             col_map["Category"] = col
+        if "date" in low:                                              col_map["Date"] = col
+        elif "vendor" in low or "payee" in low or "supplier" in low:  col_map["Vendor"] = col
+        elif "client" in low or "name" in low:                         col_map.setdefault("Vendor", col)
+        elif "memo" in low or "desc" in low or "note" in low:         col_map["Memo"] = col
+        elif "amount" in low or "value" in low:                        col_map["Amount"] = col
+        elif "split" in low:                                            col_map["Category"] = col
+        elif "cat" in low:                                              col_map["Category"] = col
     missing = [r for r in ["Date", "Vendor", "Amount", "Category"] if r not in col_map]
     if missing:
         raise ValueError(f"Missing columns: {missing}. Found: {list(df_raw.columns)}")
-    df = df_raw.rename(columns={v: k for k, v in col_map.items()})
-    df["Date"]     = pd.to_datetime(df["Date"], errors="coerce")
-    df             = df.dropna(subset=["Date"])
-    df["Amount"]   = _clean_amount(df["Amount"]).abs()
+
+    df = df_raw.rename(columns={v: k for k, v in col_map.items()}).copy()
+
+    # Strip whitespace from all string cells
+    for col in df.columns:
+        if df[col].dtype == object:
+            df[col] = df[col].astype(str).str.strip()
+
+    # Robust multi-format date parsing
+    def _try_parse_dates(s):
+        result = pd.to_datetime(s, errors="coerce", dayfirst=False)
+        mask = result.isna()
+        if mask.any():
+            for fmt in ["%d/%m/%Y", "%d-%m-%Y", "%m/%d/%Y", "%Y/%m/%d",
+                        "%d.%m.%Y", "%Y.%m.%d", "%B %d, %Y", "%d %B %Y", "%b %d %Y"]:
+                if not mask.any():
+                    break
+                try:
+                    parsed = pd.to_datetime(s[mask], format=fmt, errors="coerce")
+                    fixed  = parsed.notna()
+                    if fixed.any():
+                        result = result.copy()
+                        idx = s[mask].index[fixed]
+                        result[idx] = parsed[fixed].values
+                        mask = result.isna()
+                except Exception:
+                    pass
+        return result
+
+    df["Date"]  = _try_parse_dates(df["Date"].astype(str))
+    bad_dates   = int(df["Date"].isna().sum())
+
+    # Clean amounts — keep nonzero values only
+    df["Amount"]  = _clean_amount(df["Amount"])
+    bad_amounts   = int((df["Amount"] == 0).sum())
+
+    df = df[df["Date"].notna()].copy()
+    df = df[df["Amount"] != 0].copy()
+    df["Amount"]  = df["Amount"].abs()
+
+    if len(df) == 0:
+        raise ValueError("No valid rows found. Check date format (YYYY-MM-DD) and amount column.")
+
     df["Category"] = df["Category"].astype(str).str.strip().apply(_normalise_category)
     df["Vendor"]   = df["Vendor"].astype(str).str.strip()
     df["Memo"]     = df.get("Memo", pd.Series([""] * len(df))).fillna("").astype(str).str.strip()
     df["TxType"]   = ""
     df["Month"]    = df["Date"].dt.to_period("M").astype(str)
-    return df[["Date", "Vendor", "Memo", "Amount", "Category", "TxType", "Month"]]
+
+    result = df[["Date", "Vendor", "Memo", "Amount", "Category", "TxType", "Month"]].reset_index(drop=True)
+    parse_warnings = []
+    if bad_dates:
+        parse_warnings.append(f"{bad_dates} row(s) skipped — unparseable date (use YYYY-MM-DD format)")
+    if bad_amounts:
+        parse_warnings.append(f"{bad_amounts} row(s) skipped — zero or missing amount")
+    return result, parse_warnings
 
 
 # ── Compute all dashboard data from a dataframe ───────────────────────────────
@@ -619,6 +682,7 @@ async def upload_file(file: UploadFile = File(...)):
     is_csv   = file.filename.endswith(".csv")
     is_xlsx  = file.filename.endswith((".xlsx", ".xls"))
 
+    _std_warnings = []   # populated only for standard format
     try:
         if is_xlsx and _detect_quickbooks_vendor_xlsx(contents):
             df  = _parse_quickbooks_vendor_xlsx(contents)
@@ -627,9 +691,12 @@ async def upload_file(file: UploadFile = File(...)):
             df  = _parse_quickbooks_vendor_csv(contents)
             fmt = "quickbooks-vendor"
         else:
-            df_raw = pd.read_csv(io.BytesIO(contents)) if is_csv else pd.read_excel(io.BytesIO(contents))
-            df     = _parse_standard(df_raw)
-            fmt    = "standard"
+            if is_csv:
+                df_raw = _read_csv_any_delimiter(contents)
+            else:
+                df_raw = pd.read_excel(io.BytesIO(contents), dtype=str)
+            df, _std_warnings = _parse_standard(df_raw)
+            fmt = "standard"
     except HTTPException:
         raise
     except ValueError as e:
@@ -642,9 +709,13 @@ async def upload_file(file: UploadFile = File(...)):
     # Compute everything now — no server state needed
     computed = _compute_all(df)
 
+    # Collect any parse warnings (only for standard format; QB format has its own filtering)
+    warnings = _std_warnings if fmt == "standard" else []
+
     payload = {
         "file_format":    fmt,
         "rows":           len(df),
+        "parse_warnings": warnings,
         "vendor_count":   int(df["Vendor"].nunique()),
         "total_spend":    round(float(df["Amount"].sum()), 2),
         "date_range":     {"min": df["Date"].min().strftime("%Y-%m-%d"),

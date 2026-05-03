@@ -168,6 +168,22 @@ export default function Dashboard({ data, onReset }) {
         {/* KPIs */}
         <SummaryCards summary={filtered.summary} />
 
+        {/* Parse warnings */}
+        {(data.parse_warnings || []).length > 0 && (
+          <div style={{ background:'rgba(251,191,36,0.08)', border:'1px solid rgba(251,191,36,0.25)',
+            borderRadius:12, padding:'12px 18px' }}>
+            <p style={{ fontSize:13, color:'#fbbf24', fontWeight:600, marginBottom:4 }}>
+              ⚠ Some rows were skipped during parsing
+            </p>
+            {(data.parse_warnings || []).map((w, i) => (
+              <p key={i} style={{ fontSize:12, color:'#94a3b8', marginTop:2 }}>· {w}</p>
+            ))}
+            <p style={{ fontSize:11, color:'#64748b', marginTop:6 }}>
+              Tip: use YYYY-MM-DD date format and comma separators for best compatibility.
+            </p>
+          </div>
+        )}
+
         {/* Top spend highlight */}
         {filtered.summary.top_vendor && (
           <div style={{ background:'rgba(251,113,133,0.06)',border:'1px solid rgba(251,113,133,0.2)',
