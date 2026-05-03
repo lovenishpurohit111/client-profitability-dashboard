@@ -792,7 +792,7 @@ Respond ONLY as a JSON array with no markdown, one object per transaction in ord
                     f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}",
                     json={
                         "contents": [{"parts": [{"text": prompt}]}],
-                        "tools": [{"google_search": {}}],   # Google Search grounding
+                        "tools": [{"google_search": {"dynamic_retrieval_config": {"mode": "MODE_DYNAMIC"}, "search_kwargs": {"gl": "us", "hl": "en"}}}],   # Google Search grounded to US
                         "generationConfig": {
                             "temperature": 0.1,
                             "maxOutputTokens": 2048,
