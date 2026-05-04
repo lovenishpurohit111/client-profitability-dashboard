@@ -909,19 +909,9 @@ Respond ONLY as a JSON array with no markdown, one object per transaction in ord
             results.extend(batch_results)
 
         except Exception as e:
-            # Fallback: classify this batch with rules
-            for c in batch:
-                rule = _rule_classify(c.get("Memo",""), c.get("Vendor",""), c.get("Category",""))
-                results.append({
-                    "vendor":             c["Vendor"],
-                    "memo":               c.get("Memo") or "—",
-                    "assigned_category":  c["Category"],
-                    "suggested_category": rule["suggested_category"],
-                    "match":              rule["match"],
-                    "confidence":         rule["confidence"],
-                    "reason":             rule["reason"] + " (Gemini fallback: rule-based)",
-                    "source":             "rule-based",
-                })
+            # Fallback: try DuckDuckGo for this batch, then rules
+            ddg_results = await _ddg_reconcile(batch)
+            results.extend(ddg_results)
 
     return results
 
