@@ -853,11 +853,11 @@ async def _gemini_reconcile(combos: list, api_key: str) -> list:
             f"{i+1}. Vendor: \"{c['Vendor']}\" | Memo: \"{c['Memo'] or '—'}\" | Assigned: \"{c['Category']}\""
             for i, c in enumerate(batch)
         )
-        prompt = f"""You are an expert accounting reconciliation assistant.
-For each vendor transaction below, search Google to understand what the vendor does, then:
-1. Determine the correct accounting expense category
+        prompt = f"""You are an expert US accounting reconciliation assistant.
+All vendors are US-based businesses. Use Google Search to look up each vendor, then:
+1. Determine the correct accounting expense category for US businesses
 2. Check if the assigned Split category is correct
-3. Flag any mismatches with a clear reason
+3. Flag mismatches with a clear reason
 
 Use these standard categories:
 Meals & Entertainment, Travel & Transportation, Software & Subscriptions,
@@ -878,7 +878,7 @@ Respond ONLY as a JSON array with no markdown, one object per transaction in ord
                     f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}",
                     json={
                         "contents": [{"parts": [{"text": prompt}]}],
-                        "tools": [{"google_search": {"dynamic_retrieval_config": {"mode": "MODE_DYNAMIC"}, "search_kwargs": {"gl": "us", "hl": "en"}}}],   # Google Search grounded to US
+                        "tools": [{"google_search": {}}],   # Google Search grounding (Gemini 2.0)
                         "generationConfig": {
                             "temperature": 0.1,
                             "maxOutputTokens": 2048,
@@ -888,7 +888,7 @@ Respond ONLY as a JSON array with no markdown, one object per transaction in ord
                 )
 
             if resp.status_code != 200:
-                raise Exception(f"Gemini API error {resp.status_code}: {resp.text[:200]}")
+                raise Exception(f"Gemini {resp.status_code}: {resp.text[:300]}")
 
             data = resp.json()
             # Extract text from Gemini response
