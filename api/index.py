@@ -550,7 +550,15 @@ VENDOR_CATEGORY_MAP = {
     "stripe": "Bank & Finance Charges", "paypal": "Bank & Finance Charges",
     "state farm": "Insurance", "brosnahan insurance": "Insurance",
     "allstate": "Insurance", "progressive": "Insurance",
+    "insurance": "Insurance", "cpa": "Legal & Professional Fees",
+    "accounting": "Legal & Professional Fees", "bookkeeping": "Legal & Professional Fees",
+    "tax service": "Legal & Professional Fees", "law office": "Legal & Professional Fees",
+    "attorneys": "Legal & Professional Fees", "legal services": "Legal & Professional Fees",
     "home depot": "Materials & Inventory", "lowes": "Materials & Inventory",
+    "lowe's": "Materials & Inventory", "grainger": "Materials & Inventory",
+    "ace hardware": "Materials & Inventory", "true value": "Materials & Inventory",
+    "menards": "Materials & Inventory", "hardware": "Materials & Inventory",
+    "lumber": "Materials & Inventory", "building supply": "Materials & Inventory",
     "staples": "Office Supplies & Equipment",
     "marriott": "Travel & Transportation", "hilton": "Travel & Transportation",
     "airbnb": "Travel & Transportation", "united airlines": "Travel & Transportation",
@@ -558,6 +566,7 @@ VENDOR_CATEGORY_MAP = {
     "uber": "Travel & Transportation", "lyft": "Travel & Transportation",
     "hertz": "Travel & Transportation",
     "starbucks": "Meals & Entertainment", "chipotle": "Meals & Entertainment",
+    "burger": "Meals & Entertainment", "restaurant": "Meals & Entertainment",
 }
 
 MEMO_OVERRIDE_PATTERNS = [
@@ -595,16 +604,36 @@ def _infer_from_name(vendor: str) -> str:
         return "bank"
     if any(s in v for s in ["shell", "chevron", "exxon", "mobil", "arco", "valero"]):
         return "gas_station"
+    if any(s in v for s in ["hardware", "lumber", "supply", "supplies", "materials",
+                             "building supply", "home improvement", "equipment rental",
+                             "tool rental", "plumbing supply", "electrical supply"]):
+        return "materials"
+    if any(s in v for s in ["insurance", "assurance", "indemnity"]):
+        return "insurance"
+    if any(s in v for s in ["law ", "legal", "attorney", "lawyers", "cpa ",
+                             "accounting", "bookkeeping", "tax service"]):
+        return "professional"
+    if any(s in v for s in ["electric", "gas company", "water company",
+                             "telecom", "telephone", "internet provider"]):
+        return "utility"
+    if any(s in v for s in ["airlines", "air lines", "airways", "flights",
+                             "rental car", "car rental"]):
+        return "travel"
     if has_city:
         return "local_business"
     return ""
 
 
 TYPE_TO_CATEGORY = {
-    "restaurant": "Meals & Entertainment",
-    "hotel":      "Travel & Transportation",
-    "bank":       "Bank & Finance Charges",
-    "gas_station":"Travel & Transportation",
+    "restaurant":   "Meals & Entertainment",
+    "hotel":        "Travel & Transportation",
+    "bank":         "Bank & Finance Charges",
+    "gas_station":  "Travel & Transportation",
+    "materials":    "Materials & Inventory",
+    "insurance":    "Insurance",
+    "professional": "Legal & Professional Fees",
+    "utility":      "Utilities",
+    "travel":       "Travel & Transportation",
 }
 
 
